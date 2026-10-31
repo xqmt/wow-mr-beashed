@@ -531,7 +531,7 @@ local function desyncSetEnabled(value)
 end
 
 --// ============================================================
---// UTILITIES — AUTO GRAB GUN (optimized — no FPS drop)
+--// UTILITIES — AUTO GRAB GUN (v2 — more reliable)
 --// ============================================================
 local autoGrabGunEnabled  = false
 local grabGunThread       = nil
@@ -539,6 +539,9 @@ local grabGunHammerThread = nil
 local grabGunKnownDrop    = nil
 local grabGunSpawnConn    = nil
 local grabGunGraceUntil   = 0
+
+local GUN_DROP_NAMES = { ["GunDrop"] = true, ["RevolverDrop"] = true }
+local function isGunDropName(n) return GUN_DROP_NAMES[n] == true end
 
 local function hasGunOrRevolver(p)
     if not p then return false end
@@ -549,41 +552,54 @@ local function hasGunOrRevolver(p)
     return false
 end
 
--- Check workspace direct children first (GunDrop is usually top-level)
 local function findGunDrop()
     for _, d in ipairs(workspace:GetChildren()) do
-        if d.Name == "GunDrop" then return d end
+        if isGunDropName(d.Name) then return d end
     end
     for _, d in ipairs(workspace:GetDescendants()) do
-        if d.Name == "GunDrop" and d.Parent then return d end
+        if isGunDropName(d.Name) and d.Parent then return d end
     end
     return nil
 end
 
--- Limit drop parts to a handful — usually just one or two matter
+-- Collect drop parts — Handle gets top priority, cap raised to 8
 local function collectDropTouchParts(gd)
-    local parts = {}
-    if gd:IsA("BasePart") then
-        parts[#parts+1] = gd
-    end
+    local priority, rest = {}, {}
+    if gd:IsA("BasePart") then priority[#priority+1] = gd end
     for _, d in ipairs(gd:GetDescendants()) do
         if d:IsA("BasePart") then
-            parts[#parts+1] = d
+            local n = d.Name:lower()
+            if n == "handle" or n:find("mainpart") or n:find("main") then
+                table.insert(priority, 1, d)
+            else
+                rest[#rest+1] = d
+            end
         end
-        if #parts >= 5 then break end
     end
-    return parts
+    local out = {}
+    for _, p in ipairs(priority) do
+        out[#out+1] = p; if #out >= 8 then return out end
+    end
+    for _, p in ipairs(rest) do
+        out[#out+1] = p; if #out >= 8 then return out end
+    end
+    return out
 end
 
--- ONLY use the key body parts (HRP + torso + head) — cuts firetouchinterest calls by ~5x
+-- Key body parts — hands/feet first (this is what MM2 actually listens to)
 local function collectKeyParts(character)
     local parts = {}
-    local hrp = character:FindFirstChild("HumanoidRootPart")
-    if hrp then parts[#parts+1] = hrp end
-    local torso = character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso")
-    if torso then parts[#parts+1] = torso end
-    local head = character:FindFirstChild("Head")
-    if head then parts[#parts+1] = head end
+    local priorities = {
+        "RightHand", "LeftHand",
+        "HumanoidRootPart",
+        "UpperTorso", "LowerTorso", "Torso",
+        "RightFoot", "LeftFoot",
+        "Head",
+    }
+    for _, name in ipairs(priorities) do
+        local p = character:FindFirstChild(name)
+        if p and p:IsA("BasePart") then parts[#parts+1] = p end
+    end
     if #parts == 0 then
         for _, c in ipairs(character:GetChildren()) do
             if c:IsA("BasePart") then
@@ -595,7 +611,6 @@ local function collectKeyParts(character)
     return parts
 end
 
--- 6 reps (was 20) and only key parts — ~10-15x fewer firetouchinterest calls
 local function grabGunFast(gd)
     if not gd or not gd.Parent then return false, "nodrop" end
     local character = localPlayer.Character
@@ -603,12 +618,23 @@ local function grabGunFast(gd)
     local hrp = character:FindFirstChild("HumanoidRootPart")
     if not hrp then return false, "nochar" end
 
-    local parts = collectDropTouchParts(gd)
+    local parts   = collectDropTouchParts(gd)
     if #parts == 0 then return false, "notouch" end
     local myParts = collectKeyParts(character)
+    if #myParts == 0 then return false, "nochar" end
 
-    local wasDesyncing = desyncEnabled and not desyncPaused
-    if wasDesyncing then desyncPaused = true end
+    -- Pause desync AND let any in-flight teleport finish before touching
+    local pausedByUs = false
+    if desyncEnabled and not desyncPaused then
+        pausedByUs = true
+        desyncPaused = true
+    end
+    if desyncEnabled then
+        local deadline = tick() + 0.1
+        while desyncBusy and tick() < deadline do
+            RunService.RenderStepped:Wait()
+        end
+    end
 
     local success = false
     local ok = pcall(function()
@@ -627,7 +653,7 @@ local function grabGunFast(gd)
         end
     end)
 
-    if wasDesyncing then desyncPaused = false end
+    if pausedByUs then desyncPaused = false end
 
     if success or hasGunOrRevolver(localPlayer) then return true end
     if not ok then return false, "error" end
@@ -643,37 +669,45 @@ end
 
 local function startGrabGunHammer(gd)
     if not gd or not gd.Parent then return end
-    -- Don't restart if already hammering the same drop
     if grabGunHammerThread and grabGunKnownDrop == gd then return end
     stopGrabGunHammer()
+    grabGunKnownDrop = gd
+
     grabGunHammerThread = task.spawn(function()
-        while autoGrabGunEnabled and gd.Parent and not hasGunOrRevolver(localPlayer) do
-            grabGunFast(gd)
-            task.wait(0.1)   -- 10x/sec instead of every frame
+        local myThread  = coroutine.running()
+        local startTime = tick()
+        pcall(function()
+            while autoGrabGunEnabled and gd.Parent and not hasGunOrRevolver(localPlayer) do
+                if grabGunFast(gd) then break end
+                -- Aggressive for first 2 s, then back off
+                task.wait((tick() - startTime) < 2 and 0.03 or 0.1)
+            end
+        end)
+        -- Self-cleanup so poller can retry if we exited without success
+        if grabGunHammerThread == myThread then grabGunHammerThread = nil end
+        if gd.Parent and autoGrabGunEnabled and not hasGunOrRevolver(localPlayer) then
+            if grabGunKnownDrop == gd then grabGunKnownDrop = nil end
         end
     end)
 end
 
 local function startGrabGunWatcher()
     if grabGunThread then return end
-    grabGunGraceUntil = tick() + 1.5
+    grabGunGraceUntil = tick() + 0.5
 
-    -- Only do the expensive check for GunDrop-related descendants
     grabGunSpawnConn = workspace.DescendantAdded:Connect(function(d)
         if not autoGrabGunEnabled then return end
-        local isDrop = d.Name == "GunDrop"
-        local inDrop = d.Parent and d.Parent.Name == "GunDrop"
+        local isDrop = isGunDropName(d.Name)
+        local inDrop = d.Parent and isGunDropName(d.Parent.Name)
         if not (isDrop or inDrop) then return end
         if hasGunOrRevolver(localPlayer) then return end
-        local drop = isDrop and d or d.Parent
-        grabGunKnownDrop = drop
-        task.defer(function() startGrabGunHammer(drop) end)
+        -- startGrabGunHammer is fully synchronous, safe to call directly
+        startGrabGunHammer(isDrop and d or d.Parent)
     end)
 
-    -- Slow backup poller — only scans when nothing is tracked
     grabGunThread = task.spawn(function()
         while autoGrabGunEnabled do
-            task.wait(0.5)   -- was 0.02 → now 0.5
+            task.wait(0.3)
             if tick() <= grabGunGraceUntil then continue end
             if hasGunOrRevolver(localPlayer) then
                 stopGrabGunHammer()
@@ -682,12 +716,8 @@ local function startGrabGunWatcher()
             end
             if grabGunKnownDrop and grabGunKnownDrop.Parent then continue end
             local gd = findGunDrop()
-            if gd then
-                grabGunKnownDrop = gd
-                startGrabGunHammer(gd)
-            else
-                grabGunKnownDrop = nil
-            end
+            if gd then startGrabGunHammer(gd)
+            else grabGunKnownDrop = nil end
         end
         stopGrabGunHammer()
         grabGunKnownDrop = nil
@@ -1661,7 +1691,7 @@ local KillGroup = Tabs.Utilities:AddRightGroupbox("Murder Kill All")
 
 UtilLeft:AddToggle("AutoGrabGun", {
     Text = "Auto Grab Gun", Default = false,
-    Tooltip = "Hooks GunDrop spawn + hammers firetouchinterest from every body part. Beats other grabbers.",
+    Tooltip = "Hooks GunDrop spawn + hammers firetouchinterest from hands/feet. Beats other grabbers.",
     Callback = function(v)
         autoGrabGunEnabled = v
         if v then startGrabGunWatcher() else stopGrabGunWatcher() end
