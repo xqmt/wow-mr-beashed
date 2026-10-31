@@ -1230,7 +1230,7 @@ CombatGroup:AddToggle("SilentAimToggle", {
 
 CombatGroup:AddDropdown("SilentAimMethod", {
     Values = { "Normal", "Wallbang", "Flick" }, Default = "Normal",
-    Text = "Silent Aim Mode",
+    Text = "Method",
     Tooltip = "Normal = right hand | Wallbang = HRP | Flick = 180° flick + shoot",
     Callback = function(v) silentAimMethod = v end,
 })
