@@ -1,4 +1,4 @@
---// RuzHub Lite — Silent Aim + ESP Cham + Hit Feedback + Utilities + Crosshair + Desync Void
+--// RuzHub Lite — Silent Aim + ESP Cham + Hit Feedback + Utilities + Crosshair + Desync Void + Murder Kill All
 --// UI: Obsidian (https://github.com/deividcomsono/Obsidian)
 
 local Repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
@@ -483,14 +483,14 @@ if circle then
 end
 
 --// ============================================================
---// UTILITIES — DESYNC VOID  (NEW — placed before Auto Grab Gun)
+--// UTILITIES — DESYNC VOID (must come BEFORE grab / kill so they can pause it)
 --// ============================================================
 local desyncEnabled    = false
 local desyncConnection = nil
-local desyncPaused     = false   -- shared "pause" flag used by grab + fling
+local desyncPaused     = false
 local desyncBusy       = false
-local desyncHeight     = -15000  -- default 15000 down
-local desyncRange      = 0       -- horizontal jitter (0 by default)
+local desyncHeight     = -15000
+local desyncRange      = 0
 local desyncKeybind    = Enum.KeyCode.G
 
 local function desyncSetEnabled(value)
@@ -531,10 +531,14 @@ local function desyncSetEnabled(value)
 end
 
 --// ============================================================
---// UTILITIES — AUTO GRAB GUN (integrated with desync)
+--// UTILITIES — AUTO GRAB GUN (optimized — no FPS drop)
 --// ============================================================
-local autoGrabGunEnabled = false
-local grabGunWatcher = nil
+local autoGrabGunEnabled  = false
+local grabGunThread       = nil
+local grabGunHammerThread = nil
+local grabGunKnownDrop    = nil
+local grabGunSpawnConn    = nil
+local grabGunGraceUntil   = 0
 
 local function hasGunOrRevolver(p)
     if not p then return false end
@@ -545,77 +549,287 @@ local function hasGunOrRevolver(p)
     return false
 end
 
-local function grabGunPart(part)
-    if not part or not part:IsA("BasePart") or not part.Parent then return end
-    local char = localPlayer.Character; if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart"); if not hrp then return end
-    if hasGunOrRevolver(localPlayer) then return end
-
-    -- ⚡ Pause desync so HRP is stable during grab
-    local wasDesyncing = desyncEnabled
-    if wasDesyncing then
-        desyncPaused = true
-        task.wait(0.05) -- let any in-flight desync cycle settle
+-- Check workspace direct children first (GunDrop is usually top-level)
+local function findGunDrop()
+    for _, d in ipairs(workspace:GetChildren()) do
+        if d.Name == "GunDrop" then return d end
     end
-    local function resumeDesync()
-        if wasDesyncing then task.delay(0.1, function() desyncPaused = false end) end
+    for _, d in ipairs(workspace:GetDescendants()) do
+        if d.Name == "GunDrop" and d.Parent then return d end
     end
+    return nil
+end
 
-    -- Primary: instant client-side touch
-    local touch = part:FindFirstChild("TouchInterest")
-    if firetouchinterest and touch then
-        pcall(function()
-            firetouchinterest(hrp, part, 0)
-            firetouchinterest(hrp, part, 1)
-        end)
-        resumeDesync()
-        return
+-- Limit drop parts to a handful — usually just one or two matter
+local function collectDropTouchParts(gd)
+    local parts = {}
+    if gd:IsA("BasePart") then
+        parts[#parts+1] = gd
     end
-
-    -- Fallback: pull part toward stable HRP
-    local origCollide = part.CanCollide
-    part.CanCollide = false
-    local startT = tick()
-    local conn
-    conn = RunService.Heartbeat:Connect(function()
-        if part and part.Parent and not hasGunOrRevolver(localPlayer) then
-            part.CFrame = hrp.CFrame
-        else
-            if part and part.Parent then part.CanCollide = origCollide end
-            conn:Disconnect(); resumeDesync(); return
+    for _, d in ipairs(gd:GetDescendants()) do
+        if d:IsA("BasePart") then
+            parts[#parts+1] = d
         end
-        if tick() - startT > 0.6 then
-            if part and part.Parent then part.CanCollide = origCollide end
-            conn:Disconnect(); resumeDesync()
+        if #parts >= 5 then break end
+    end
+    return parts
+end
+
+-- ONLY use the key body parts (HRP + torso + head) — cuts firetouchinterest calls by ~5x
+local function collectKeyParts(character)
+    local parts = {}
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    if hrp then parts[#parts+1] = hrp end
+    local torso = character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso")
+    if torso then parts[#parts+1] = torso end
+    local head = character:FindFirstChild("Head")
+    if head then parts[#parts+1] = head end
+    if #parts == 0 then
+        for _, c in ipairs(character:GetChildren()) do
+            if c:IsA("BasePart") then
+                parts[#parts+1] = c
+                if #parts >= 3 then break end
+            end
+        end
+    end
+    return parts
+end
+
+-- 6 reps (was 20) and only key parts — ~10-15x fewer firetouchinterest calls
+local function grabGunFast(gd)
+    if not gd or not gd.Parent then return false, "nodrop" end
+    local character = localPlayer.Character
+    if not character then return false, "nochar" end
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return false, "nochar" end
+
+    local parts = collectDropTouchParts(gd)
+    if #parts == 0 then return false, "notouch" end
+    local myParts = collectKeyParts(character)
+
+    local wasDesyncing = desyncEnabled and not desyncPaused
+    if wasDesyncing then desyncPaused = true end
+
+    local success = false
+    local ok = pcall(function()
+        for rep = 1, 6 do
+            for i = 1, #myParts do
+                local myPart = myParts[i]
+                for j = 1, #parts do
+                    local part = parts[j]
+                    pcall(firetouchinterest, myPart, part, 0)
+                    pcall(firetouchinterest, myPart, part, 1)
+                end
+            end
+            if hasGunOrRevolver(localPlayer) then success = true; return end
+            if not gd.Parent then return end
+            if rep % 2 == 0 then task.wait() end
+        end
+    end)
+
+    if wasDesyncing then desyncPaused = false end
+
+    if success or hasGunOrRevolver(localPlayer) then return true end
+    if not ok then return false, "error" end
+    return false, "refused"
+end
+
+local function stopGrabGunHammer()
+    if grabGunHammerThread then
+        pcall(task.cancel, grabGunHammerThread)
+        grabGunHammerThread = nil
+    end
+end
+
+local function startGrabGunHammer(gd)
+    if not gd or not gd.Parent then return end
+    -- Don't restart if already hammering the same drop
+    if grabGunHammerThread and grabGunKnownDrop == gd then return end
+    stopGrabGunHammer()
+    grabGunHammerThread = task.spawn(function()
+        while autoGrabGunEnabled and gd.Parent and not hasGunOrRevolver(localPlayer) do
+            grabGunFast(gd)
+            task.wait(0.1)   -- 10x/sec instead of every frame
         end
     end)
 end
 
-local function findGunDrop()
-    local gd = workspace:FindFirstChild("GunDrop", true); if not gd then return nil end
-    return gd:IsA("BasePart") and gd or gd:FindFirstChildWhichIsA("BasePart", true)
+local function startGrabGunWatcher()
+    if grabGunThread then return end
+    grabGunGraceUntil = tick() + 1.5
+
+    -- Only do the expensive check for GunDrop-related descendants
+    grabGunSpawnConn = workspace.DescendantAdded:Connect(function(d)
+        if not autoGrabGunEnabled then return end
+        local isDrop = d.Name == "GunDrop"
+        local inDrop = d.Parent and d.Parent.Name == "GunDrop"
+        if not (isDrop or inDrop) then return end
+        if hasGunOrRevolver(localPlayer) then return end
+        local drop = isDrop and d or d.Parent
+        grabGunKnownDrop = drop
+        task.defer(function() startGrabGunHammer(drop) end)
+    end)
+
+    -- Slow backup poller — only scans when nothing is tracked
+    grabGunThread = task.spawn(function()
+        while autoGrabGunEnabled do
+            task.wait(0.5)   -- was 0.02 → now 0.5
+            if tick() <= grabGunGraceUntil then continue end
+            if hasGunOrRevolver(localPlayer) then
+                stopGrabGunHammer()
+                grabGunKnownDrop = nil
+                continue
+            end
+            if grabGunKnownDrop and grabGunKnownDrop.Parent then continue end
+            local gd = findGunDrop()
+            if gd then
+                grabGunKnownDrop = gd
+                startGrabGunHammer(gd)
+            else
+                grabGunKnownDrop = nil
+            end
+        end
+        stopGrabGunHammer()
+        grabGunKnownDrop = nil
+    end)
+end
+
+local function stopGrabGunWatcher()
+    if grabGunThread then
+        pcall(task.cancel, grabGunThread)
+        grabGunThread = nil
+    end
+    if grabGunSpawnConn then
+        grabGunSpawnConn:Disconnect()
+        grabGunSpawnConn = nil
+    end
+    stopGrabGunHammer()
+    grabGunKnownDrop = nil
 end
 
 local function tryGrabGunNow()
-    local gd = findGunDrop(); if gd then grabGunPart(gd) end
+    local gd = findGunDrop()
+    if not gd then return false, "nodrop" end
+    return grabGunFast(gd)
 end
 
-local function startGrabGunWatcher()
-    if grabGunWatcher then return end
-    tryGrabGunNow()
-    grabGunWatcher = workspace.DescendantAdded:Connect(function(desc)
-        if not autoGrabGunEnabled then return end
-        if desc.Name == "GunDrop" or (desc.Parent and desc.Parent.Name == "GunDrop") then
-            local bp = desc:IsA("BasePart") and desc or desc:FindFirstChildWhichIsA("BasePart", true)
-            if bp and not hasGunOrRevolver(localPlayer) then
-                task.defer(function() grabGunPart(bp) end)
+--// ============================================================
+--// UTILITIES — MURDER KILL ALL (OnyxHub style)
+--// ============================================================
+local autoKillAllEnabled = false
+local autoKillAllThread  = nil
+local autoKillAllDelay   = 0.2
+
+local function isMurderer()
+    local character = localPlayer.Character
+    if character and character:FindFirstChild("Knife") then return true end
+    local bp = localPlayer:FindFirstChild("Backpack")
+    if bp and bp:FindFirstChild("Knife") then return true end
+    return false
+end
+
+local function getKnifeWithChar()
+    local character = localPlayer.Character
+    if not character then return nil end
+    local knife = character:FindFirstChild("Knife")
+    if knife then return knife, character end
+    local bp = localPlayer:FindFirstChild("Backpack")
+    bp = bp and bp:FindFirstChild("Knife")
+    local hum = character:FindFirstChildOfClass("Humanoid")
+    if bp and hum then
+        hum:EquipTool(bp)
+        task.wait(0.1)
+        local c2 = localPlayer.Character
+        return c2 and c2:FindFirstChild("Knife"), c2
+    end
+    return nil
+end
+
+local function getAllAliveTargets()
+    local tbl = {}
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= localPlayer and player.Character then
+            local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+            local hum = player.Character:FindFirstChildOfClass("Humanoid")
+            if hrp and hum and hum.Health > 0 then
+                tbl[#tbl + 1] = player
+            end
+        end
+    end
+    return tbl
+end
+
+local function killAllPlayers()
+    if not isMurderer() then return 0, "notmurderer" end
+    local knife = getKnifeWithChar()
+    if not knife then return 0, "noknife" end
+    local events = knife:FindFirstChild("Events")
+    if not events then return 0, "noevents" end
+    local knifeStabbed  = events:FindFirstChild("KnifeStabbed")
+    local handleTouched = events:FindFirstChild("HandleTouched")
+    if not (knifeStabbed and handleTouched) then return 0, "noremote" end
+
+    pcall(function() knifeStabbed:FireServer() end)
+
+    local count = 0
+    for _, player in ipairs(getAllAliveTargets()) do
+        local pc = player.Character
+        local target = pc and (
+            pc:FindFirstChild("HumanoidRootPart")
+            or pc:FindFirstChild("Torso")
+            or pc:FindFirstChildWhichIsA("BasePart")
+        )
+        if target then
+            pcall(function() handleTouched:FireServer(target) end)
+            count += 1
+        end
+    end
+    return count
+end
+
+local function killTargetByName(name)
+    if not name or name == "" then return 0, "noname" end
+    if not isMurderer() then return 0, "notmurderer" end
+    local target = Players:FindFirstChild(name)
+    if not target then return 0, "notfound" end
+    local knife = getKnifeWithChar()
+    if not knife then return 0, "noknife" end
+    local events = knife:FindFirstChild("Events")
+    if not events then return 0, "noevents" end
+    local knifeStabbed  = events:FindFirstChild("KnifeStabbed")
+    local handleTouched = events:FindFirstChild("HandleTouched")
+    if not (knifeStabbed and handleTouched) then return 0, "noremote" end
+    pcall(function() knifeStabbed:FireServer() end)
+    local pc = target.Character
+    local bodyPart = pc and (
+        pc:FindFirstChild("HumanoidRootPart")
+        or pc:FindFirstChild("Torso")
+        or pc:FindFirstChildWhichIsA("BasePart")
+    )
+    if bodyPart then
+        pcall(function() handleTouched:FireServer(bodyPart) end)
+        return 1
+    end
+    return 0
+end
+
+local function startAutoKillAll()
+    if autoKillAllThread then return end
+    autoKillAllThread = task.spawn(function()
+        while autoKillAllEnabled do
+            task.wait(autoKillAllDelay)
+            if isMurderer() then
+                pcall(killAllPlayers)
             end
         end
     end)
 end
 
-local function stopGrabGunWatcher()
-    if grabGunWatcher then grabGunWatcher:Disconnect(); grabGunWatcher = nil end
+local function stopAutoKillAll()
+    if autoKillAllThread then
+        pcall(task.cancel, autoKillAllThread)
+        autoKillAllThread = nil
+    end
 end
 
 --// ============================================================
@@ -629,7 +843,6 @@ local function flingPlayer(target)
     local humanoid = character:FindFirstChildOfClass("Humanoid"); if not humanoid then return end
     local rootPart = humanoid.RootPart; if not rootPart then return end
 
-    -- ⚡ Pause desync during fling (HRP is heavily manipulated)
     local wasDesyncing = desyncEnabled
     if wasDesyncing then desyncPaused = true; task.wait(0.05) end
 
@@ -727,6 +940,103 @@ local function flingWeaponHolder(weaponName)
         end
     end
 end
+
+--// ============================================================
+--// UTILITIES — ANTI FLING (self-protection)
+--// ============================================================
+local antiFlingEnabled    = false
+local antiFlingConn       = nil
+local antiFlingSitConn    = nil
+local antiFlingGraceUntil = 0
+
+local function antiFlingResetPart(part)
+    if not part or not part.Parent then return end
+    local lv = part.AssemblyLinearVelocity
+    local av = part.AssemblyAngularVelocity
+    if lv.Magnitude > 200 then
+        part.AssemblyLinearVelocity = Vector3.zero
+        part.Velocity = Vector3.zero
+    end
+    if av.Magnitude > 50 then
+        part.AssemblyAngularVelocity = Vector3.zero
+        part.RotVelocity = Vector3.zero
+    end
+end
+
+local function antiFlingStripMovers(hrp)
+    for _, c in ipairs(hrp:GetChildren()) do
+        if c:IsA("BodyVelocity") or c:IsA("BodyGyro") or c:IsA("BodyAngularVelocity")
+        or c:IsA("LinearVelocity") or c:IsA("AngularVelocity")
+        or c:IsA("VectorForce") or c:IsA("Torque") then
+            pcall(function() c:Destroy() end)
+        end
+    end
+end
+
+local function antiFlingBindHum()
+    local char = localPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if hum and antiFlingEnabled then
+        pcall(function() hum:SetStateEnabled(Enum.HumanoidStateType.Seated, false) end)
+    end
+end
+
+local function startAntiFling()
+    if antiFlingConn then return end
+    antiFlingGraceUntil = tick() + 1
+
+    antiFlingConn = RunService.Stepped:Connect(function()
+        if not antiFlingEnabled then return end
+        if tick() < antiFlingGraceUntil then return end
+        -- Don't fight the intentional desync void teleport
+        if desyncEnabled and (desyncPaused or desyncBusy) then return end
+
+        local char = localPlayer.Character
+        if not char then return end
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if not hrp or not hum or hum.Health <= 0 then return end
+
+        -- Strip injected movers on HRP
+        antiFlingStripMovers(hrp)
+
+        -- Reset seated state (common fling setup)
+        if hum.Sit then
+            hum.Sit = false
+            pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
+        end
+
+        -- Reset velocity on every body part + accessory handles
+        for _, p in ipairs(char:GetChildren()) do
+            if p:IsA("BasePart") then
+                antiFlingResetPart(p)
+            elseif p:IsA("Accessory") then
+                local h = p:FindFirstChild("Handle")
+                if h then antiFlingResetPart(h) end
+            end
+        end
+    end)
+
+    antiFlingSitConn = localPlayer.CharacterAdded:Connect(function()
+        task.wait(0.5); antiFlingBindHum()
+    end)
+    antiFlingBindHum()
+end
+
+local function stopAntiFling()
+    if antiFlingConn then
+        antiFlingConn:Disconnect()
+        antiFlingConn = nil
+    end
+    if antiFlingSitConn then
+        antiFlingSitConn:Disconnect()
+        antiFlingSitConn = nil
+    end
+end
+
+localPlayer.CharacterAdded:Connect(function()
+    antiFlingGraceUntil = tick() + 2
+end)
 
 --// ============================================================
 --// CUSTOM CROSSHAIR
@@ -1343,27 +1653,47 @@ ESPGroup:AddToggle("ESPSelfToggle", {
 })
 
 --// ============================================================
---// UI — UTILITIES (Grab Gun / Fling / Desync Void)
+--// UI — UTILITIES (Grab Gun / Desync / Murder Kill All / Fling + Anti-Fling)
 --// ============================================================
 local UtilLeft  = Tabs.Utilities:AddLeftGroupbox("Grab Gun & Desync")
 local UtilRight = Tabs.Utilities:AddRightGroupbox("Fling")
+local KillGroup = Tabs.Utilities:AddRightGroupbox("Murder Kill All")
 
 UtilLeft:AddToggle("AutoGrabGun", {
     Text = "Auto Grab Gun", Default = false,
-    Tooltip = "Grab dropped gun automatically when spawned (pauses desync while grabbing)",
+    Tooltip = "Hooks GunDrop spawn + hammers firetouchinterest from every body part. Beats other grabbers.",
     Callback = function(v)
         autoGrabGunEnabled = v
         if v then startGrabGunWatcher() else stopGrabGunWatcher() end
     end,
 })
 
-UtilLeft:AddButton("Grab Gun (Once)", function() tryGrabGunNow() end)
+UtilLeft:AddButton("Grab Gun (Once)", function()
+    local ok, reason = tryGrabGunNow()
+    local msg
+    if ok then
+        msg = "Got the gun!"
+    elseif reason == "nodrop" then
+        msg = "No gun on the ground right now."
+    elseif reason == "nochar" then
+        msg = "No character."
+    elseif reason == "notouch" then
+        msg = "Could not find a touchable part."
+    elseif reason == "error" then
+        msg = "firetouchinterest errored."
+    else
+        msg = "Could not grab (server refused)."
+    end
+    pcall(function()
+        Library:Notify({ Title = ok and "Gun Grabbed!" or "Grab Failed", Content = msg, Duration = 2 })
+    end)
+end)
 
 UtilLeft:AddDivider()
 
 UtilLeft:AddToggle("DesyncVoidToggle", {
     Text = "Enable Desync", Default = false,
-    Tooltip = "Teleport to void and back each cycle to desync from server. Auto Grab Gun / Fling will pause desync automatically.",
+    Tooltip = "Teleport to void and back each cycle to desync from server. Grab Gun / Fling / Auto Kill All pause desync automatically.",
     Callback = function(v) desyncSetEnabled(v) end,
 })
 
@@ -1381,8 +1711,54 @@ UtilLeft:AddSlider("DesyncRange", {
 
 UtilLeft:AddLabel("Desync Keybind: G (toggle)")
 
+--// Murder Kill All
+KillGroup:AddButton("Kill All (Once)", function()
+    if not isMurderer() then
+        pcall(function()
+            Library:Notify({ Title = "Not Murderer!", Content = "You don't have the knife.", Duration = 2 })
+        end)
+        return
+    end
+    local count = killAllPlayers()
+    pcall(function()
+        Library:Notify({
+            Title = "Kill All",
+            Content = ("Stabbed %d player%s."):format(count, count == 1 and "" or "s"),
+            Duration = 2,
+        })
+    end)
+end)
+
+KillGroup:AddToggle("AutoKillAll", {
+    Text = "Auto Kill All", Default = false,
+    Tooltip = "Continuously fires Kill All while you are holding the knife",
+    Callback = function(v)
+        autoKillAllEnabled = v
+        if v then startAutoKillAll() else stopAutoKillAll() end
+    end,
+})
+
+KillGroup:AddSlider("AutoKillAllDelay", {
+    Text = "Auto Kill Delay", Default = 0.2, Min = 0.05, Max = 2,
+    Rounding = 2, Suffix = "s",
+    Tooltip = "How often the auto kill-all triggers",
+    Callback = function(v) autoKillAllDelay = v end,
+})
+
+--// Fling + Anti-Fling
 UtilRight:AddButton("Fling Murderer", function() flingWeaponHolder("Knife") end)
 UtilRight:AddButton("Fling Sheriff", function() flingWeaponHolder("Gun") end)
+
+UtilRight:AddDivider()
+
+UtilRight:AddToggle("AntiFlingToggle", {
+    Text = "Anti Fling", Default = false,
+    Tooltip = "Protects you from being flung by other cheaters (resets velocity / strips injected movers / kills sit-state)",
+    Callback = function(v)
+        antiFlingEnabled = v
+        if v then startAntiFling() else stopAntiFling() end
+    end,
+})
 
 --// ============================================================
 --// UI — VISUAL (Custom Crosshair + VFX Aura + Shoot Sound)
@@ -1472,6 +1848,9 @@ local MenuGroup = Tabs["UI Settings"]:AddLeftGroupbox("Menu")
 
 MenuGroup:AddButton("Unload", function()
     desyncSetEnabled(false)
+    stopAutoKillAll()
+    stopGrabGunWatcher()
+    if stopAntiFling then stopAntiFling() end
     Library:Unload()
 end)
 
