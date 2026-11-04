@@ -50,11 +50,10 @@ local ZeroHub = {
         ClearSandstormUI = false,
         TornadoEnabled = false,
         TornadoReverse = false,
-        ShowTornadoRadius = false,   -- NEW
+        ShowTornadoRadius = false,
         ClickTarget = false,
         PushAura = false,
         ClaimPhysics = false,
-        -- NEW FEATURES --
         Godmode = false,
         AntiFall = false,
         FlySystem = true,
@@ -71,7 +70,7 @@ local ZeroHub = {
         TornadoLayers = 5,
         TornadoLayerModifier = 1.05,
         TornadoHeightModifier = 2,
-        TornadoRadiusColor = Color3.fromRGB(0, 170, 255),   -- NEW
+        TornadoRadiusColor = Color3.fromRGB(0, 170, 255),
         FlySpeed = 50,
         FlySpeedMult = 3,
     },
@@ -363,21 +362,69 @@ local function setAntiFall(on)
 end
 
 -- ============================
--- FLY SYSTEM
+-- FLY SYSTEM (FIXED)
 -- ============================
 local flySystemEnabled = true
 local flying = false
 local flyKeybind = Enum.KeyCode.F
 local flyCharacter, flyHumanoid, flyRoot
 local flyAttachment, flyLV, flyAO
+local FlyToggleInstance = nil
+
+local function destroyFlyInstances()
+    if flyLV and flyLV.Parent then pcall(function() flyLV:Destroy() end) end
+    if flyAO and flyAO.Parent then pcall(function() flyAO:Destroy() end) end
+    if flyAttachment and flyAttachment.Parent then pcall(function() flyAttachment:Destroy() end) end
+    flyLV, flyAO, flyAttachment = nil, nil, nil
+end
+
+local function attachFlyToCharacter(char)
+    if not char or not char.Parent then return false end
+
+    -- ถ้า attach ตัวละครนี้อยู่แล้ว ไม่ต้องทำซ้ำ
+    if flyCharacter == char and flyRoot and flyRoot.Parent
+        and flyLV and flyLV.Parent and flyAO and flyAO.Parent then
+        flyHumanoid = char:FindFirstChildOfClass("Humanoid") or flyHumanoid
+        return true
+    end
+
+    local hrp = char:FindFirstChild("HumanoidRootPart") or char:WaitForChild("HumanoidRootPart", 5)
+    if not hrp then return false end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum then return false end
+
+    destroyFlyInstances()
+
+    flyCharacter = char
+    flyHumanoid = hum
+    flyRoot = hrp
+
+    flyAttachment = Instance.new("Attachment", hrp)
+    flyLV = Instance.new("LinearVelocity", hrp)
+    flyLV.Attachment0 = flyAttachment
+    flyLV.MaxForce = math.huge
+    flyLV.VectorVelocity = Vector3.zero
+    flyAO = Instance.new("AlignOrientation", hrp)
+    flyAO.Attachment0 = flyAttachment
+    flyAO.MaxTorque = math.huge
+    flyAO.Responsiveness = 200
+    flyAO.Mode = Enum.OrientationAlignmentMode.OneAttachment
+
+    pcall(function()
+        hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+        hum:SetStateEnabled(Enum.HumanoidStateType.FreeFalling, false)
+        hum:SetStateEnabled(Enum.HumanoidStateType.Landed, false)
+    end)
+    return true
+end
 
 local function stopFly()
     flying = false
     local lv, ao, att, root, hum, char = flyLV, flyAO, flyAttachment, flyRoot, flyHumanoid, flyCharacter
-    flyLV, flyAO, flyAttachment, flyRoot = nil, nil, nil, nil
+    flyLV, flyAO, flyAttachment, flyRoot, flyHumanoid, flyCharacter = nil, nil, nil, nil, nil, nil
     task.spawn(function()
         if lv and lv.Parent then
-            lv.VectorVelocity = Vector3.zero
+            pcall(function() lv.VectorVelocity = Vector3.zero end)
         end
         if root and root.Parent and char then
             local params = RaycastParams.new()
@@ -385,11 +432,13 @@ local function stopFly()
             params.FilterDescendantsInstances = { char }
             local hit = Workspace:Raycast(root.Position, Vector3.new(0, -2000, 0), params)
             if hit then
-                root.CFrame = CFrame.new(hit.Position + Vector3.new(0, 3.5, 0))
+                pcall(function()
+                    root.CFrame = CFrame.new(hit.Position + Vector3.new(0, 3.5, 0))
+                end)
             end
         end
         if root and root.Parent then
-            root.AssemblyLinearVelocity = Vector3.zero
+            pcall(function() root.AssemblyLinearVelocity = Vector3.zero end)
         end
         if hum then
             pcall(function()
@@ -404,58 +453,61 @@ local function stopFly()
             pcall(function() hum.PlatformStand = false end)
         end
         if att and att.Parent then
-            att:Destroy()
+            pcall(function() att:Destroy() end)
         end
     end)
 end
 
 local function startFly()
-    flyCharacter = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-    flyHumanoid = flyCharacter:FindFirstChildOfClass("Humanoid")
-    flyRoot = flyHumanoid and flyHumanoid.SeatPart or flyCharacter:FindFirstChild("HumanoidRootPart")
-    if not flyRoot then
-        return
-    end
-    if flyAttachment then
-        flyAttachment:Destroy()
-    end
-    flyAttachment = Instance.new("Attachment", flyRoot)
-    flyLV = Instance.new("LinearVelocity", flyRoot)
-    flyLV.Attachment0 = flyAttachment
-    flyLV.MaxForce = math.huge
-    flyLV.VectorVelocity = Vector3.zero
-    flyAO = Instance.new("AlignOrientation", flyRoot)
-    flyAO.Attachment0 = flyAttachment
-    flyAO.MaxTorque = math.huge
-    flyAO.Responsiveness = 200
-    flyAO.Mode = Enum.OrientationAlignmentMode.OneAttachment
-    if flyHumanoid then
-        pcall(function()
-            flyHumanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
-            flyHumanoid:SetStateEnabled(Enum.HumanoidStateType.FreeFalling, false)
-            flyHumanoid:SetStateEnabled(Enum.HumanoidStateType.Landed, false)
-        end)
-    end
     flying = true
+    local char = LocalPlayer.Character
+    if char then
+        attachFlyToCharacter(char)
+    end
 end
 
 local function toggleFly()
-    if not flySystemEnabled then
-        return
-    end
+    if not flySystemEnabled then return end
     if flying then
         stopFly()
     else
         startFly()
     end
+    if FlyToggleInstance and FlyToggleInstance.Set then
+        pcall(function() FlyToggleInstance:Set(flying) end)
+    end
 end
 
+-- สำคัญ: reattach fly ทุกครั้งที่ respawn (ไม่ปิด fly)
+LocalPlayer.CharacterAdded:Connect(function(char)
+    if flying then
+        task.spawn(function()
+            local hrp = char:WaitForChild("HumanoidRootPart", 10)
+            if hrp and flying then
+                task.wait(0.1)
+                if flying then
+                    attachFlyToCharacter(char)
+                end
+            end
+        end)
+    end
+end)
+
 RunService.RenderStepped:Connect(function()
-    if flying and flyRoot and flyLV and flyAO then
-        if not flyRoot.Parent then
-            stopFly()
+    if flying then
+        -- ตัวละครตาย/respawn → reattach (ไม่ stop)
+        if not flyRoot or not flyRoot.Parent or not flyLV or not flyAO
+            or not flyCharacter or not flyCharacter.Parent then
+            local char = LocalPlayer.Character
+            if char then
+                local hum = char:FindFirstChildOfClass("Humanoid")
+                if hum and hum.Health > 0 and char:FindFirstChild("HumanoidRootPart") then
+                    attachFlyToCharacter(char)
+                end
+            end
             return
         end
+
         if flyHumanoid then
             flyHumanoid.PlatformStand = not flyHumanoid.SeatPart
             pcall(function()
@@ -659,7 +711,7 @@ pushAura.TouchEnded:Connect(function(hit)
 end)
 
 -- ============================
--- TORNADO RADIUS VISUALIZER (NEW)
+-- TORNADO RADIUS VISUALIZER
 -- ============================
 local tornadoRadiusVisual = Instance.new("Part")
 tornadoRadiusVisual.Name = "ZeroHub_TornadoRadiusVisual"
@@ -1043,9 +1095,6 @@ ZeroHub.Connections.Heartbeat = RunService.RenderStepped:Connect(function(delta)
         end
     end
 
-    -- ============================
-    -- TORNADO RADIUS VISUAL UPDATE (NEW)
-    -- ============================
     if tornadoRadiusVisual then
         if ZeroHub.Toggles.ShowTornadoRadius and char then
             local center = Tornado.TargetLocation or char:GetPivot().Position
@@ -1272,6 +1321,9 @@ Tabs.Character:Toggle({
         ZeroHub.Toggles.FlySystem = state
         if not flySystemEnabled and flying then
             stopFly()
+            if FlyToggleInstance and FlyToggleInstance.Set then
+                pcall(function() FlyToggleInstance:Set(false) end)
+            end
         end
     end
 })
@@ -1304,11 +1356,17 @@ Tabs.Character:Slider({
     end,
 })
 
-Tabs.Character:Button({
+-- เปลี่ยนจาก Button เป็น Toggle (sync กับ keybind)
+FlyToggleInstance = Tabs.Character:Toggle({
     Title = "Toggle Fly",
-    Desc = "Instantly enable/disable flight",
-    Callback = function()
-        toggleFly()
+    Desc = "Enable/disable flight (keybind also toggles this)",
+    Value = false,
+    Callback = function(state)
+        if state and not flying then
+            startFly()
+        elseif not state and flying then
+            stopFly()
+        end
     end,
 })
 
