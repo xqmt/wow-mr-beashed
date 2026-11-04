@@ -798,7 +798,7 @@ task.spawn(function()
 end)
 
 local Tabs = {
-    Home = Window:Tab({ Title = "Home", Icon = "home" }),
+    Home = Window:Tab({ Title = "Home", Icon = "home-2" }),
     Character = Window:Tab({ Title = "Character", Icon = "user" }),
     World = Window:Tab({ Title = "World", Icon = "globe" }),
     Disaster = Window:Tab({ Title = "Disaster", Icon = "cloud-lightning" }),
@@ -1507,7 +1507,7 @@ Tabs.Settings:Section({ Title = "Interface Theme" })
 Tabs.Settings:Dropdown({
     Title = "Theme",
     Values = { "Dark", "Midnight", "Violet", "Sky", "Emerald", "Rose", "Plant", "Red" },
-    Value = "Dark",
+    Value = "Rose",
     Callback = function(theme)
         pcall(function()
             WindUI:SetTheme(theme)
@@ -1519,7 +1519,7 @@ Tabs.Settings:Dropdown({
 Tabs.Settings:Toggle({
     Title = "Acrylic Blur",
     Desc = "Glass background blur effect",
-    Value = false,
+    Value = true,
     Callback = function(state)
         pcall(function()
             WindUI:ToggleAcrylic(state)
