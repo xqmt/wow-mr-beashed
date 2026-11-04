@@ -190,9 +190,9 @@ end)
 
 Window:EditOpenButton({
     Title = "Open flow.xyz",
-    Icon = "mouse-pointer-click",
+    Icon = "wind",
     CornerRadius = UDim.new(0,16),
-    StrokeThickness = 1.2,
+    StrokeThickness = 1.5,
     Color = ColorSequence.new(
         Color3.fromHex("FFFFFF"), 
         Color3.fromHex("000000")
