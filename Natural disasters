@@ -197,7 +197,7 @@ end)
 
 Window:EditOpenButton({
     Title = "Open flow.xyz",
-    Icon = "activity",
+    Icon = "code-xml",
     CornerRadius = UDim.new(0,16),
     StrokeThickness = 1.5,
     Color = ColorSequence.new(
@@ -1144,7 +1144,7 @@ local Tabs = {
     Home = Window:Tab({ Title = "Home", Icon = "house" }),
     Character = Window:Tab({ Title = "Character", Icon = "user" }),
     World = Window:Tab({ Title = "World", Icon = "globe" }),
-    Disaster = Window:Tab({ Title = "Disaster", Icon = "cloud-lightning" }),
+    Disaster = Window:Tab({ Title = "Disaster", Icon = "cloud" }),
     Auras = Window:Tab({ Title = "Troll", Icon = "flame" }),
     Teleports = Window:Tab({ Title = "Teleports", Icon = "map-pin" }),
     Settings = Window:Tab({ Title = "Settings", Icon = "sliders-horizontal" }),
