@@ -190,7 +190,7 @@ pcall(function()
 end)
 
 Window:EditOpenButton({
-    Title = "Open flow.xyz",
+    Title = "flow.xyz",
     Icon = "mouse-pointer-click",
     CornerRadius = UDim.new(0,16),
     StrokeThickness = 1.2,
