@@ -124,8 +124,8 @@ WindUI:AddTheme({
     BackgroundTransparency = 0.5,
     Outline = Color3.fromHex("#FFFFFF"),
     Text = Color3.fromHex("#FFFFFF"),
-    Placeholder = Color3.fromHex("#7a7a7a"),
-    Button = Color3.fromHex("#52525b"),
+    Placeholder = Color3.fromHex("#000000"),
+    Button = Color3.fromHex("#1A1A1A"),
     Icon = Color3.fromHex("#FFFFFF"),
     
     Hover = Color3.fromHex("#FFFFFF"), -- Text
@@ -138,7 +138,7 @@ WindUI:AddTheme({
     DialogBackgroundTransparency = 0.5, -- BackgroundTransparency
     DialogTitle = Color3.fromHex("#FFFFFF"), -- Text
     DialogContent = Color3.fromHex("#FFFFFF"), -- Text
-    DialogIcon = Color3.fromHex("#a1a1aa"), -- Icon
+    DialogIcon = Color3.fromHex("#FFFFFF"), -- Icon
     
     WindowTopbarButtonIcon = Color3.fromHex("a1a1aa"), -- Icon
     WindowTopbarTitle = Color3.fromHex("FFFFFF"), -- Text
@@ -154,13 +154,13 @@ WindUI:AddTheme({
     ElementDesc = Color3.fromHex("#FFFFFF"), -- Text
     ElementIcon = Color3.fromHex("#a1a1aa"), -- Icon
     
-    PopupBackground = Color3.fromHex("#101010"), -- Background
+    PopupBackground = Color3.fromHex("#1A1A1A"), -- Background
     PopupBackgroundTransparency = 0.5, -- BackgroundTransparency
     PopupTitle = Color3.fromHex("#FFFFFF"), -- Text
     PopupContent = Color3.fromHex("#FFFFFF"), -- Text
     PopupIcon = Color3.fromHex("#a1a1aa"), -- Icon
     
-    DialogBackground = Color3.fromHex("#101010"), -- Background
+    DialogBackground = Color3.fromHex("#1A1A1A"), -- Background
     DialogBackgroundTransparency = 0.5, -- Transparency
     DialogTitle = Color3.fromHex("#FFFFFF"), -- Text
     DialogContent = Color3.fromHex("#FFFFFF"), -- Text
@@ -172,7 +172,7 @@ WindUI:AddTheme({
     Checkbox = Color3.fromHex("#52525b"), -- Button
     CheckboxIcon = Color3.fromHex("#FFFFFF"), -- White
     
-    Slider = Color3.fromHex("#52525b"), -- Button
+    Slider = Color3.fromHex("#FFFFFF"), -- Button
     SliderThumb = Color3.fromHex("#FFFFFF"), -- White
     
 })
@@ -186,7 +186,7 @@ local Window = WindUI:CreateWindow({
     Size = UDim2.fromOffset(620, 480),
     Transparent = false,
     Acrylic = false,
-    Theme = "Dark",
+    Theme = "Custom",
 })
 pcall(function()
     WindUI:ToggleAcrylic(false)
@@ -1781,8 +1781,8 @@ Tabs.Settings:Section({ Title = "Interface Theme" })
 
 Tabs.Settings:Dropdown({
     Title = "Theme",
-    Values = { "Dark", "Midnight", "Violet", "Sky", "Emerald", "Rose", "Plant", "Red" },
-    Value = "Dark",
+    Values = { "Custom", "Dark", "Midnight", "Violet", "Sky", "Emerald", "Rose", "Plant", "Red" },
+    Value = "Custom",
     Callback = function(theme)
         pcall(function()
             WindUI:SetTheme(theme)
