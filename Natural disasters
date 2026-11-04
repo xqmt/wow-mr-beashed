@@ -25,7 +25,7 @@ pcall(function()
 end)
 
 local ZeroHub = {
-    Version = "1.0.2",
+    Version = "1.1.0",
     Title = "zerohub.cc",
     SubTitle = "Natural Disaster Survival",
     Connections = {},
@@ -36,7 +36,6 @@ local ZeroHub = {
         NoPlayerCollision = false,
         WaterWalk = false,
         AutoReset = false,
-        Bypass = false,
         AntiTeleport = false,
         AntiVoid = false,
         FixBalloon = true,
@@ -54,14 +53,15 @@ local ZeroHub = {
         ClickTarget = false,
         PushAura = false,
         ClaimPhysics = false,
+        -- NEW FEATURES --
+        Godmode = false,
+        AntiFall = false,
+        FlySystem = true,
     },
     Values = {
         WalkSpeed = 16,
         JumpPower = 50,
         Gravity = 196.2,
-        PosSpoof = Vector3.zero,
-        RotSpoof = Vector3.zero,
-        RotSpoofSpeed = Vector3.zero,
         DisplaySide = "Left",
         PushRadius = 25,
         PushPower = 10,
@@ -70,6 +70,8 @@ local ZeroHub = {
         TornadoLayers = 5,
         TornadoLayerModifier = 1.05,
         TornadoHeightModifier = 2,
+        FlySpeed = 50,
+        FlySpeedMult = 3,
     },
     Round = {
         Disaster = "None",
@@ -96,6 +98,9 @@ local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
 local Mouse = LocalPlayer:GetMouse()
 
+local PlayerModule = require(LocalPlayer.PlayerScripts:WaitForChild("PlayerModule"))
+local Controls = PlayerModule:GetControls()
+
 for _, p in ipairs({CoreGui, (gethui and gethui())}) do
     if p then
         for _, c in ipairs(p:GetChildren()) do
@@ -109,9 +114,9 @@ end
 local WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
 
 local Window = WindUI:CreateWindow({
-    Title = "xorfee.lol",
+    Title = "flow.xyz",
     Author = "Natural Disaster Survival",
-    Folder = "zerohub_nds",
+    Folder = "flow_nds",
     Size = UDim2.fromOffset(620, 480),
     Transparent = false,
     Acrylic = false,
@@ -121,63 +126,307 @@ pcall(function()
     WindUI:ToggleAcrylic(false)
 end)
 
-local function notify(title, content, duration)
-    pcall(function()
-        WindUI:Notify({
-            Title = title or "Open UI",
-            Content = content or "",
-            Duration = duration or 2.5,
-        })
-    end)
-end
+Window:EditOpenButton({
+    Title = "Open Example UI",
+    Icon = "monitor",
+    CornerRadius = UDim.new(0,16),
+    StrokeThickness = 1.2,
+    Color = ColorSequence.new( -- gradient
+        Color3.fromHex("FF0F7B"), 
+        Color3.fromHex("F89B29")
+    ),
+    OnlyMobile = false,
+    Enabled = true,
+    Draggable = true,
+})
 
-local realCharacter = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-local realHRP = realCharacter and (realCharacter:WaitForChild("HumanoidRootPart", 5) or realCharacter:FindFirstChild("Torso"))
-local realHum = realCharacter and realCharacter:WaitForChild("Humanoid", 5)
-local LastPivot = realCharacter and realCharacter:GetPivot() or CFrame.new()
-
-local fakeChar = Instance.new("Model")
-fakeChar.Name = LocalPlayer.Name .. "_ZEROHUB_FAKE"
-local fakeHrp = Instance.new("Part", fakeChar)
-fakeHrp.Size = Vector3.new(2, 2, 1)
-fakeHrp.CanCollide = true
-fakeHrp.Transparency = 0.8
-fakeHrp.Name = "HumanoidRootPart"
-if realCharacter then fakeHrp.CFrame = realCharacter:GetPivot() end
-local fakeHum = Instance.new("Humanoid", fakeChar)
-fakeChar.PrimaryPart = fakeHrp
-table.insert(ZeroHub.CreatedInstances, fakeChar)
+-- ============================
+-- CHARACTER GETTERS (simplified)
+-- ============================
+local LastPivot = LocalPlayer.Character and LocalPlayer.Character:GetPivot() or CFrame.new()
 
 local function getRealChar()
-    if not realCharacter or not realCharacter.Parent or realCharacter == fakeChar then
-        local found = Workspace:FindFirstChild(LocalPlayer.Name)
-        if found and found ~= fakeChar then
-            realCharacter = found
-        end
-    end
-    return realCharacter
+    return LocalPlayer.Character
 end
 
 local function getRealHRP()
-    local char = getRealChar()
+    local char = LocalPlayer.Character
     if char then
-        if not realHRP or not realHRP.Parent or realHRP.Parent ~= char then
-            realHRP = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
-        end
+        return char:FindFirstChild("HumanoidRootPart")
+            or char:FindFirstChild("Torso")
+            or char:FindFirstChild("UpperTorso")
     end
-    return realHRP
+    return nil
 end
 
 local function getRealHum()
-    local char = getRealChar()
+    local char = LocalPlayer.Character
     if char then
-        if not realHum or not realHum.Parent or realHum.Parent ~= char then
-            realHum = char:FindFirstChildOfClass("Humanoid")
-        end
+        return char:FindFirstChildOfClass("Humanoid")
     end
-    return realHum
+    return nil
 end
 
+-- ============================
+-- GOD MODE (from file 2)
+-- ============================
+local godEnabled = false
+local godLoopConn, godRespawnConn
+
+local function applyGodProps(char)
+    task.spawn(function()
+        local hum = char:WaitForChild("Humanoid", 10)
+        if hum and godEnabled then
+            pcall(function()
+                hum.MaxHealth = math.huge
+                hum.Health = math.huge
+                hum:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
+                hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+                hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+            end)
+        end
+    end)
+end
+
+local function restoreGodProps(char)
+    local hum = char and char:FindFirstChildWhichIsA("Humanoid")
+    if hum then
+        pcall(function()
+            hum:SetStateEnabled(Enum.HumanoidStateType.Dead, true)
+            hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
+            hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, true)
+        end)
+    end
+end
+
+local function setGodmode(on)
+    godEnabled = on
+    ZeroHub.Toggles.Godmode = on
+    if on then
+        if godLoopConn then
+            pcall(function() godLoopConn:Disconnect() end)
+        end
+        godLoopConn = RunService.Heartbeat:Connect(function()
+            local char = LocalPlayer.Character
+            if char and godEnabled then
+                local hum = char:FindFirstChildWhichIsA("Humanoid")
+                if hum then
+                    hum.Health = math.huge
+                    hum.MaxHealth = math.huge
+                end
+            end
+        end)
+        if LocalPlayer.Character then
+            applyGodProps(LocalPlayer.Character)
+        end
+        if godRespawnConn then
+            pcall(function() godRespawnConn:Disconnect() end)
+        end
+        godRespawnConn = LocalPlayer.CharacterAdded:Connect(function(char)
+            if godEnabled then
+                applyGodProps(char)
+            end
+        end)
+    else
+        if godLoopConn then
+            pcall(function() godLoopConn:Disconnect() end)
+            godLoopConn = nil
+        end
+        if godRespawnConn then
+            pcall(function() godRespawnConn:Disconnect() end)
+            godRespawnConn = nil
+        end
+        if LocalPlayer.Character then
+            restoreGodProps(LocalPlayer.Character)
+        end
+    end
+end
+
+-- ============================
+-- ANTI-FALL (from file 2)
+-- ============================
+local antiFallEnabled = false
+local antiFallLoopConn, antiFallRespawnConn
+
+local function hookAntiFall(char)
+    task.spawn(function()
+        local r = char:WaitForChild("HumanoidRootPart", 10)
+        if not r or not antiFallEnabled then
+            return
+        end
+        if antiFallLoopConn then
+            pcall(function() antiFallLoopConn:Disconnect() end)
+        end
+        local z = Vector3.zero
+        antiFallLoopConn = RunService.Heartbeat:Connect(function()
+            if not antiFallEnabled or not r.Parent then
+                pcall(function() antiFallLoopConn:Disconnect() end)
+                antiFallLoopConn = nil
+                return
+            end
+            local v = r.AssemblyLinearVelocity
+            r.AssemblyLinearVelocity = z
+            RunService.RenderStepped:Wait()
+            r.AssemblyLinearVelocity = v
+        end)
+    end)
+end
+
+local function setAntiFall(on)
+    antiFallEnabled = on
+    ZeroHub.Toggles.AntiFall = on
+    if on then
+        if LocalPlayer.Character then
+            hookAntiFall(LocalPlayer.Character)
+        end
+        if antiFallRespawnConn then
+            pcall(function() antiFallRespawnConn:Disconnect() end)
+        end
+        antiFallRespawnConn = LocalPlayer.CharacterAdded:Connect(function(char)
+            if antiFallEnabled then
+                hookAntiFall(char)
+            end
+        end)
+    else
+        if antiFallLoopConn then
+            pcall(function() antiFallLoopConn:Disconnect() end)
+            antiFallLoopConn = nil
+        end
+        if antiFallRespawnConn then
+            pcall(function() antiFallRespawnConn:Disconnect() end)
+            antiFallRespawnConn = nil
+        end
+    end
+end
+
+-- ============================
+-- FLY SYSTEM (from file 2)
+-- ============================
+local flySystemEnabled = true
+local flying = false
+local flyKeybind = Enum.KeyCode.F
+local flyCharacter, flyHumanoid, flyRoot
+local flyAttachment, flyLV, flyAO
+
+local function stopFly()
+    flying = false
+    local lv, ao, att, root, hum, char = flyLV, flyAO, flyAttachment, flyRoot, flyHumanoid, flyCharacter
+    flyLV, flyAO, flyAttachment, flyRoot = nil, nil, nil, nil
+    task.spawn(function()
+        if lv and lv.Parent then
+            lv.VectorVelocity = Vector3.zero
+        end
+        if root and root.Parent and char then
+            local params = RaycastParams.new()
+            params.FilterType = Enum.RaycastFilterType.Exclude
+            params.FilterDescendantsInstances = { char }
+            local hit = Workspace:Raycast(root.Position, Vector3.new(0, -2000, 0), params)
+            if hit then
+                root.CFrame = CFrame.new(hit.Position + Vector3.new(0, 3.5, 0))
+            end
+        end
+        if root and root.Parent then
+            root.AssemblyLinearVelocity = Vector3.zero
+        end
+        if hum then
+            pcall(function()
+                hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
+                hum:SetStateEnabled(Enum.HumanoidStateType.FreeFalling, true)
+                hum:SetStateEnabled(Enum.HumanoidStateType.Landed, true)
+                hum:ChangeState(Enum.HumanoidStateType.Running)
+            end)
+        end
+        task.wait(0.08)
+        if hum then
+            pcall(function() hum.PlatformStand = false end)
+        end
+        if att and att.Parent then
+            att:Destroy()
+        end
+    end)
+end
+
+local function startFly()
+    flyCharacter = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    flyHumanoid = flyCharacter:FindFirstChildOfClass("Humanoid")
+    flyRoot = flyHumanoid and flyHumanoid.SeatPart or flyCharacter:FindFirstChild("HumanoidRootPart")
+    if not flyRoot then
+        return
+    end
+    if flyAttachment then
+        flyAttachment:Destroy()
+    end
+    flyAttachment = Instance.new("Attachment", flyRoot)
+    flyLV = Instance.new("LinearVelocity", flyRoot)
+    flyLV.Attachment0 = flyAttachment
+    flyLV.MaxForce = math.huge
+    flyLV.VectorVelocity = Vector3.zero
+    flyAO = Instance.new("AlignOrientation", flyRoot)
+    flyAO.Attachment0 = flyAttachment
+    flyAO.MaxTorque = math.huge
+    flyAO.Responsiveness = 200
+    flyAO.Mode = Enum.OrientationAlignmentMode.OneAttachment
+    if flyHumanoid then
+        pcall(function()
+            flyHumanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+            flyHumanoid:SetStateEnabled(Enum.HumanoidStateType.FreeFalling, false)
+            flyHumanoid:SetStateEnabled(Enum.HumanoidStateType.Landed, false)
+        end)
+    end
+    flying = true
+end
+
+local function toggleFly()
+    if not flySystemEnabled then
+        return
+    end
+    if flying then
+        stopFly()
+    else
+        startFly()
+    end
+end
+
+RunService.RenderStepped:Connect(function()
+    if flying and flyRoot and flyLV and flyAO then
+        if not flyRoot.Parent then
+            stopFly()
+            return
+        end
+        if flyHumanoid then
+            flyHumanoid.PlatformStand = not flyHumanoid.SeatPart
+            pcall(function()
+                flyHumanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+                flyHumanoid:SetStateEnabled(Enum.HumanoidStateType.FreeFalling, false)
+                flyHumanoid:SetStateEnabled(Enum.HumanoidStateType.Landed, false)
+            end)
+        end
+        local cam = Workspace.CurrentCamera
+        local mv = Controls:GetMoveVector()
+        local dir = cam.CFrame.LookVector * -mv.Z + cam.CFrame.RightVector * mv.X
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+            dir += Vector3.new(0, 1, 0)
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+            dir += Vector3.new(0, -1, 0)
+        end
+        local spd = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) and ZeroHub.Values.FlySpeed * ZeroHub.Values.FlySpeedMult * 2
+            or ZeroHub.Values.FlySpeed * ZeroHub.Values.FlySpeedMult
+        flyLV.VectorVelocity = dir.Magnitude > 0 and dir.Unit * spd or Vector3.zero
+        flyAO.CFrame = cam.CFrame
+    end
+end)
+
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == flyKeybind then
+        toggleFly()
+    end
+end)
+
+-- ============================
+-- GRAVITY
+-- ============================
 local function applyGravity()
     local target = ZeroHub.Values.Gravity
     local char = getRealChar()
@@ -191,6 +440,9 @@ local function applyGravity()
 end
 applyGravity()
 
+-- ============================
+-- TELEPORT
+-- ============================
 local function teleportTo(cf)
     local oldAntiTp = ZeroHub.Toggles.AntiTeleport
     ZeroHub.Toggles.AntiTeleport = false
@@ -203,15 +455,13 @@ local function teleportTo(cf)
             hrp.AssemblyAngularVelocity = Vector3.zero
         end
     end
-    if fakeChar and fakeChar.Parent then
-        fakeChar:PivotTo(typeof(cf) == "Vector3" and CFrame.new(cf) or cf)
-        fakeHrp.AssemblyLinearVelocity = Vector3.zero
-        fakeHrp.AssemblyAngularVelocity = Vector3.zero
-    end
     task.wait(0.08)
     ZeroHub.Toggles.AntiTeleport = oldAntiTp
 end
 
+-- ============================
+-- CHAT ANNOUNCE
+-- ============================
 local function announceDisaster(msg)
     pcall(function()
         if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
@@ -234,6 +484,9 @@ local function announceDisaster(msg)
     end)
 end
 
+-- ============================
+-- HUD
+-- ============================
 local ScreenHUD = nil
 local HUDLabels = {}
 
@@ -295,6 +548,9 @@ local function updateHUDText()
     end
 end
 
+-- ============================
+-- WATER PLATFORM
+-- ============================
 local waterPlatform = Instance.new("Part")
 waterPlatform.Name = "ZeroHub_WaterPlatform"
 waterPlatform.Size = Vector3.new(2048, 4, 2048)
@@ -304,6 +560,9 @@ waterPlatform.CanCollide = false
 waterPlatform.Parent = Workspace
 table.insert(ZeroHub.CreatedInstances, waterPlatform)
 
+-- ============================
+-- PUSH AURA
+-- ============================
 local pushAura = Instance.new("Part")
 pushAura.Name = "ZeroHub_PushAura"
 pushAura.Shape = Enum.PartType.Ball
@@ -321,8 +580,8 @@ table.insert(ZeroHub.CreatedInstances, pushAura)
 local pushInsideParts = {}
 pushAura.Touched:Connect(function(hit)
     if not hit or not hit.Parent or not hit:IsA("BasePart") or hit.Anchored then return end
-    if realCharacter and hit:IsDescendantOf(realCharacter) then return end
-    if fakeChar and hit:IsDescendantOf(fakeChar) then return end
+    local realChar = getRealChar()
+    if realChar and hit:IsDescendantOf(realChar) then return end
     if hit.Parent:FindFirstChildOfClass("Humanoid") then return end
     if not table.find(pushInsideParts, hit) then
         table.insert(pushInsideParts, hit)
@@ -336,6 +595,9 @@ pushAura.TouchEnded:Connect(function(hit)
     end
 end)
 
+-- ============================
+-- TORNADO
+-- ============================
 local Tornado = {
     PartList = {},
     OldCollisions = {},
@@ -345,8 +607,8 @@ local Tornado = {
 
 local function isPartTornadoSafe(part)
     if not part or not part.Parent or not part:IsA("BasePart") or part.Anchored then return false end
-    if realCharacter and part:IsDescendantOf(realCharacter) then return false end
-    if fakeChar and part:IsDescendantOf(fakeChar) then return false end
+    local realChar = getRealChar()
+    if realChar and part:IsDescendantOf(realChar) then return false end
     if part.Parent:FindFirstChildOfClass("Humanoid") then return false end
     if part.Name:lower() == "handle" then return false end
     return true
@@ -398,6 +660,9 @@ Mouse.Button1Down:Connect(function()
     ZeroHub.Round.LastClick = now
 end)
 
+-- ============================
+-- ROUND EVENTS
+-- ============================
 task.spawn(function()
     pcall(function()
         local remotes = ReplicatedStorage:WaitForChild("Remotes", 10)
@@ -418,43 +683,45 @@ task.spawn(function()
     end)
 end)
 
+-- ============================
+-- CHARACTER BINDING
+-- ============================
 local function bindCharacter(char)
-    if char ~= fakeChar and not char.Name:find("FAKE") then
-        realCharacter = char
-        realHRP = char:WaitForChild("HumanoidRootPart", 10) or char:FindFirstChild("Torso")
-        realHum = char:WaitForChild("Humanoid", 10)
-        ZeroHub.Round.Respawning = true
+    if not char then return end
+    ZeroHub.Round.Respawning = true
 
-        if realHum then
-            realHum.Died:Connect(function()
-                ZeroHub.Round.Respawning = true
-            end)
-        end
-
-        char.ChildAdded:Connect(function(child)
-            if child:IsA("Tool") and child.Name:lower():find("balloon") then
-                applyGravity()
-            end
+    local hum = char:WaitForChild("Humanoid", 10)
+    if hum then
+        hum.Died:Connect(function()
+            ZeroHub.Round.Respawning = true
         end)
-
-        char.ChildRemoved:Connect(function(child)
-            if child:IsA("Tool") and child.Name:lower():find("balloon") then
-                applyGravity()
-            end
-        end)
-
-        task.wait(0.2)
-        ZeroHub.Round.Respawning = false
-        applyGravity()
-        fakeChar:PivotTo(char:GetPivot())
     end
+
+    char.ChildAdded:Connect(function(child)
+        if child:IsA("Tool") and child.Name:lower():find("balloon") then
+            applyGravity()
+        end
+    end)
+
+    char.ChildRemoved:Connect(function(child)
+        if child:IsA("Tool") and child.Name:lower():find("balloon") then
+            applyGravity()
+        end
+    end)
+
+    task.wait(0.2)
+    ZeroHub.Round.Respawning = false
+    applyGravity()
 end
 
 LocalPlayer.CharacterAdded:Connect(bindCharacter)
-if LocalPlayer.Character and LocalPlayer.Character ~= fakeChar then
+if LocalPlayer.Character then
     bindCharacter(LocalPlayer.Character)
 end
 
+-- ============================
+-- PHYSICS CLAIM
+-- ============================
 local sethidden = sethiddenproperty or sethiddenprop
 local setsimradius = setsimulationradius
 
@@ -488,6 +755,9 @@ local function applyPhysicsClaim()
     end
 end
 
+-- ============================
+-- MAIN LOOP
+-- ============================
 ZeroHub.Connections.Heartbeat = RunService.RenderStepped:Connect(function(delta)
     local char = getRealChar()
     local hrp = getRealHRP()
@@ -535,7 +805,7 @@ ZeroHub.Connections.Heartbeat = RunService.RenderStepped:Connect(function(delta)
         waterPlatform.CanCollide = ZeroHub.Toggles.WaterWalk
     end
 
-    if ZeroHub.Toggles.AntiVoid or ZeroHub.Toggles.Bypass then
+    if ZeroHub.Toggles.AntiVoid then
         Workspace.FallenPartsDestroyHeight = 0/0
     else
         Workspace.FallenPartsDestroyHeight = -500
@@ -551,80 +821,8 @@ ZeroHub.Connections.Heartbeat = RunService.RenderStepped:Connect(function(delta)
             if part:IsA("BasePart") then
                 if ZeroHub.Toggles.Noclip then
                     part.CanCollide = false
-                elseif not ZeroHub.Toggles.Bypass and part.Name == "HumanoidRootPart" then
+                elseif part.Name == "HumanoidRootPart" then
                     part.CanCollide = true
-                end
-            end
-        end
-    end
-
-    if char and hrp and hum and not ZeroHub.Round.Respawning then
-        if ZeroHub.Toggles.Bypass then
-            if not fakeChar.Parent then
-                fakeHrp.CFrame = hrp.CFrame
-                fakeChar.Parent = Workspace
-            end
-
-            fakeHum.WalkSpeed = ZeroHub.Values.WalkSpeed
-            fakeHum.JumpPower = ZeroHub.Values.JumpPower
-            fakeHum.HipHeight = hum.HipHeight
-            fakeHum.RigType = hum.RigType
-            fakeHum.Health = math.clamp(hum.Health, 1, 100)
-            fakeHrp.Size = hrp.Size
-            fakeHrp.CanCollide = not ZeroHub.Toggles.Noclip
-
-            hum.PlatformStand = true
-            hum:MoveTo(fakeHrp.Position + (fakeHum.MoveDirection * 50))
-
-            if LocalPlayer.Character ~= fakeChar then
-                LocalPlayer.Character = fakeChar
-            end
-
-            if Camera and not ZeroHub.Round.Respawning then
-                Camera.CameraSubject = fakeHum
-            end
-
-            if fakeHrp.Position.Y <= -25 then
-                fakeHrp.AssemblyLinearVelocity = Vector3.new(fakeHrp.AssemblyLinearVelocity.X, math.abs(fakeHrp.AssemblyLinearVelocity.Y) * 0.9 + 20, fakeHrp.AssemblyLinearVelocity.Z)
-                fakeChar:PivotTo(fakeHrp.CFrame + Vector3.new(0, 10, 0))
-            end
-
-            local spoofOffset = (fakeHrp.CFrame.RightVector * ZeroHub.Values.PosSpoof.X) +
-                                (fakeHrp.CFrame.UpVector * ZeroHub.Values.PosSpoof.Y) +
-                                (fakeHrp.CFrame.LookVector * ZeroHub.Values.PosSpoof.Z)
-            local spoofRot = CFrame.Angles(
-                math.rad(ZeroHub.Values.RotSpoof.X),
-                math.rad(ZeroHub.Values.RotSpoof.Y),
-                math.rad(ZeroHub.Values.RotSpoof.Z)
-            )
-            char:PivotTo((fakeChar:GetPivot() + spoofOffset) * spoofRot)
-
-            for _, bp in ipairs(char:GetChildren()) do
-                if bp:IsA("BasePart") then
-                    bp.CanCollide = false
-                    bp.AssemblyLinearVelocity = Vector3.new(
-                        math.clamp(bp.AssemblyLinearVelocity.X, -1, 1),
-                        3,
-                        math.clamp(bp.AssemblyLinearVelocity.Z, -1, 1)
-                    )
-                end
-            end
-        else
-            if LocalPlayer.Character == fakeChar then
-                char:PivotTo(fakeChar:GetPivot())
-                LocalPlayer.Character = char
-                hum.PlatformStand = false
-                if Camera then Camera.CameraSubject = hum end
-                fakeChar.Parent = nil
-            else
-                fakeChar:PivotTo(char:GetPivot())
-                if fakeChar.Parent then fakeChar.Parent = nil end
-            end
-
-            if hrp.AssemblyLinearVelocity.Y < -55 then
-                local ray = Workspace:Raycast(hrp.Position, Vector3.new(0, -18, 0))
-                if ray then
-                    hrp.AssemblyLinearVelocity = Vector3.new(hrp.AssemblyLinearVelocity.X, -10, hrp.AssemblyLinearVelocity.Z)
                 end
             end
         end
@@ -695,16 +893,14 @@ ZeroHub.Connections.Heartbeat = RunService.RenderStepped:Connect(function(delta)
         if sGui then sGui.Enabled = not ZeroHub.Toggles.ClearSandstormUI end
     end
 
-    local trackChar = (ZeroHub.Toggles.Bypass and fakeChar.Parent and fakeChar) or char
-    if trackChar and ZeroHub.Toggles.PushAura then
+    if char and ZeroHub.Toggles.PushAura then
         pushAura.Size = Vector3.new(ZeroHub.Values.PushRadius, ZeroHub.Values.PushRadius, ZeroHub.Values.PushRadius)
-        pushAura:PivotTo(trackChar:GetPivot())
-        local trackHRP = (ZeroHub.Toggles.Bypass and fakeHrp) or hrp
-        if trackHRP then
-            pushAura.AssemblyLinearVelocity = trackHRP.AssemblyLinearVelocity
+        pushAura:PivotTo(char:GetPivot())
+        if hrp then
+            pushAura.AssemblyLinearVelocity = hrp.AssemblyLinearVelocity
         end
 
-        local centerPos = trackChar:GetPivot().Position
+        local centerPos = char:GetPivot().Position
         for i = #pushInsideParts, 1, -1 do
             local part = pushInsideParts[i]
             if part and part.Parent and not part.Anchored and not part:IsGrounded() then
@@ -720,8 +916,8 @@ ZeroHub.Connections.Heartbeat = RunService.RenderStepped:Connect(function(delta)
         end
     end
 
-    if trackChar and ZeroHub.Toggles.TornadoEnabled then
-        local center = Tornado.TargetLocation or trackChar:GetPivot().Position
+    if char and ZeroHub.Toggles.TornadoEnabled then
+        local center = Tornado.TargetLocation or char:GetPivot().Position
         local i = 1
         while i <= #Tornado.PartList do
             local part = Tornado.PartList[i]
@@ -767,6 +963,9 @@ ZeroHub.Connections.Heartbeat = RunService.RenderStepped:Connect(function(delta)
     applyPhysicsClaim()
 end)
 
+-- ============================
+-- ISLAND EARTHQUAKE WATCH
+-- ============================
 task.spawn(function()
     local island = Workspace:WaitForChild("Island", 10)
     if island then
@@ -783,20 +982,9 @@ task.spawn(function()
     end
 end)
 
-task.spawn(function()
-    while task.wait(0.02) do
-        if ZeroHub.Toggles.Bypass and ZeroHub.Values.RotSpoofSpeed ~= Vector3.zero then
-            local current = ZeroHub.Values.RotSpoof
-            local speed = ZeroHub.Values.RotSpoofSpeed
-            ZeroHub.Values.RotSpoof = Vector3.new(
-                (current.X + speed.X) % 360,
-                (current.Y + speed.Y) % 360,
-                (current.Z + speed.Z) % 360
-            )
-        end
-    end
-end)
-
+-- ============================
+-- UI
+-- ============================
 local Tabs = {
     Home = Window:Tab({ Title = "Home", Icon = "home-2" }),
     Character = Window:Tab({ Title = "Character", Icon = "user" }),
@@ -913,6 +1101,9 @@ Tabs.Home:Button({
     end
 })
 
+-- ============================
+-- CHARACTER TAB
+-- ============================
 Tabs.Character:Section({ Title = "Movement" })
 
 Tabs.Character:Slider({
@@ -923,7 +1114,6 @@ Tabs.Character:Slider({
         ZeroHub.Values.WalkSpeed = val
         local hum = getRealHum()
         if hum then hum.WalkSpeed = val end
-        if fakeHum then fakeHum.WalkSpeed = val end
     end
 })
 
@@ -935,7 +1125,6 @@ Tabs.Character:Slider({
         ZeroHub.Values.JumpPower = val
         local hum = getRealHum()
         if hum then hum.JumpPower = val end
-        if fakeHum then fakeHum.JumpPower = val end
     end
 })
 
@@ -957,7 +1146,7 @@ Tabs.Character:Toggle({
         if state then
             ZeroHub.Connections.InfJump = UserInputService.JumpRequest:Connect(function()
                 if ZeroHub.Toggles.InfJump then
-                    local hum = (ZeroHub.Toggles.Bypass and fakeHum) or getRealHum()
+                    local hum = getRealHum()
                     if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
                 end
             end)
@@ -970,7 +1159,82 @@ Tabs.Character:Toggle({
     end
 })
 
+-- ============================
+-- FLIGHT SECTION (NEW)
+-- ============================
+Tabs.Character:Section({ Title = "Flight" })
+
+Tabs.Character:Toggle({
+    Title = "Enable Fly System",
+    Desc = "Enables the fly controller (F to activate)",
+    Value = true,
+    Callback = function(state)
+        flySystemEnabled = state
+        ZeroHub.Toggles.FlySystem = state
+        if not flySystemEnabled and flying then
+            stopFly()
+        end
+    end
+})
+
+Tabs.Character:Keybind({
+    Title = "Fly Keybind",
+    Desc = "Key used to toggle flying",
+    Value = tostring(flyKeybind.Name),
+    Callback = function(key)
+        flyKeybind = Enum.KeyCode[key]
+    end,
+})
+
+Tabs.Character:Slider({
+    Title = "Fly Speed",
+    Desc = "Base horizontal fly speed",
+    Value = { Min = 10, Max = 500, Default = 50 },
+    Callback = function(val)
+        ZeroHub.Values.FlySpeed = val
+    end,
+})
+
+Tabs.Character:Slider({
+    Title = "Fly Speed Multiplier",
+    Desc = "Multiplied into fly speed (hold Shift for 2x)",
+    Step = 0.1,
+    Value = { Min = 0.5, Max = 10, Default = 3 },
+    Callback = function(val)
+        ZeroHub.Values.FlySpeedMult = val
+    end,
+})
+
+Tabs.Character:Button({
+    Title = "Toggle Fly",
+    Desc = "Instantly enable/disable flight",
+    Callback = function()
+        toggleFly()
+    end,
+})
+
+-- ============================
+-- DEFENSE & SAFETY
+-- ============================
 Tabs.Character:Section({ Title = "Defense & Safety" })
+
+Tabs.Character:Toggle({
+    Title = "Godmode",
+    Desc = "Infinite health + disables death states",
+    Value = false,
+    Callback = function(state)
+        setGodmode(state)
+    end,
+})
+
+Tabs.Character:Toggle({
+    Title = "Anti-Fall",
+    Desc = "Prevents fall damage by nullifying velocity",
+    Value = false,
+    Callback = function(state)
+        setAntiFall(state)
+    end,
+})
 
 Tabs.Character:Toggle({
     Title = "Anti-Fling",
@@ -978,7 +1242,7 @@ Tabs.Character:Toggle({
     Value = false,
     Callback = function(state)
         ZeroHub.Toggles.AntiFling = state
-    end
+    end,
 })
 
 Tabs.Character:Toggle({
@@ -987,7 +1251,7 @@ Tabs.Character:Toggle({
     Value = false,
     Callback = function(state)
         ZeroHub.Toggles.NoPlayerCollision = state
-    end
+    end,
 })
 
 Tabs.Character:Toggle({
@@ -999,7 +1263,7 @@ Tabs.Character:Toggle({
         if waterPlatform then
             waterPlatform.CanCollide = state
         end
-    end
+    end,
 })
 
 Tabs.Character:Toggle({
@@ -1008,7 +1272,7 @@ Tabs.Character:Toggle({
     Value = false,
     Callback = function(state)
         ZeroHub.Toggles.AutoReset = state
-    end
+    end,
 })
 
 Tabs.Character:Toggle({
@@ -1017,77 +1281,7 @@ Tabs.Character:Toggle({
     Value = false,
     Callback = function(state)
         ZeroHub.Toggles.AntiVoid = state
-    end
-})
-
-Tabs.Character:Section({ Title = "Bypass & Spoofing" })
-
-Tabs.Character:Toggle({
-    Title = "Speed & Fall Bypass",
-    Desc = "Dual-character controller bypassing speed bans and fall damage",
-    Value = false,
-    Callback = function(state)
-        ZeroHub.Toggles.Bypass = state
-        local char = getRealChar()
-        local hrp = getRealHRP()
-        local hum = getRealHum()
-        if state then
-            if char and hrp then
-                fakeHrp.CFrame = hrp.CFrame
-                fakeChar.Parent = Workspace
-                fakeHum.WalkSpeed = ZeroHub.Values.WalkSpeed
-                fakeHum.JumpPower = ZeroHub.Values.JumpPower
-                fakeHrp.CanCollide = not ZeroHub.Toggles.Noclip
-                LocalPlayer.Character = fakeChar
-                if Camera then Camera.CameraSubject = fakeHum end
-                if hum then hum.PlatformStand = true end
-            end
-        else
-            if LocalPlayer.Character == fakeChar and char then
-                char:PivotTo(fakeChar:GetPivot())
-                LocalPlayer.Character = char
-                if hum then hum.PlatformStand = false end
-                if Camera and hum then Camera.CameraSubject = hum end
-                fakeChar.Parent = nil
-            end
-        end
-    end
-})
-
-Tabs.Character:Input({
-    Title = "Position Offset",
-    Desc = "Offset coordinates applied while bypassed (X, Y, Z)",
-    Placeholder = "0, 0, 0",
-    Value = "0, 0, 0",
-    Callback = function(txt)
-        local s = txt:gsub(";", ","):gsub(" ", ""):split(",")
-        local x, y, z = tonumber(s[1]) or 0, tonumber(s[2]) or 0, tonumber(s[3]) or 0
-        ZeroHub.Values.PosSpoof = Vector3.new(x, y, z)
-    end
-})
-
-Tabs.Character:Input({
-    Title = "Rotation Offset",
-    Desc = "Pitch, Yaw, Roll angles applied while bypassed",
-    Placeholder = "0, 0, 0",
-    Value = "0, 0, 0",
-    Callback = function(txt)
-        local s = txt:gsub(";", ","):gsub(" ", ""):split(",")
-        local x, y, z = tonumber(s[1]) or 0, tonumber(s[2]) or 0, tonumber(s[3]) or 0
-        ZeroHub.Values.RotSpoof = Vector3.new(x, y, z)
-    end
-})
-
-Tabs.Character:Input({
-    Title = "Spin Speed",
-    Desc = "Continuous rotational velocity vector",
-    Placeholder = "0, 0, 0",
-    Value = "0, 0, 0",
-    Callback = function(txt)
-        local s = txt:gsub(";", ","):gsub(" ", ""):split(",")
-        local x, y, z = tonumber(s[1]) or 0, tonumber(s[2]) or 0, tonumber(s[3]) or 0
-        ZeroHub.Values.RotSpoofSpeed = Vector3.new(x, y, z)
-    end
+    end,
 })
 
 Tabs.Character:Toggle({
@@ -1096,9 +1290,12 @@ Tabs.Character:Toggle({
     Value = false,
     Callback = function(state)
         ZeroHub.Toggles.AntiTeleport = state
-    end
+    end,
 })
 
+-- ============================
+-- WORLD TAB
+-- ============================
 Tabs.World:Section({ Title = "Gravity Modification" })
 
 local GravSlider = Tabs.World:Slider({
@@ -1223,6 +1420,9 @@ Tabs.World:Toggle({
     end
 })
 
+-- ============================
+-- DISASTER TAB
+-- ============================
 Tabs.Disaster:Section({ Title = "Disaster Indicators" })
 
 Tabs.Disaster:Toggle({
@@ -1284,6 +1484,9 @@ Tabs.Disaster:Toggle({
     end
 })
 
+-- ============================
+-- AURAS TAB
+-- ============================
 Tabs.Auras:Section({ Title = "Part Tornado" })
 
 Tabs.Auras:Toggle({
@@ -1428,6 +1631,9 @@ Tabs.Auras:Toggle({
     end
 })
 
+-- ============================
+-- TELEPORTS TAB
+-- ============================
 Tabs.Teleports:Section({ Title = "Destinations" })
 
 local TELEPORT_LOCATIONS = {
@@ -1502,12 +1708,15 @@ Tabs.Teleports:Button({
     end
 })
 
+-- ============================
+-- SETTINGS TAB
+-- ============================
 Tabs.Settings:Section({ Title = "Interface Theme" })
 
 Tabs.Settings:Dropdown({
     Title = "Theme",
     Values = { "Dark", "Midnight", "Violet", "Sky", "Emerald", "Rose", "Plant", "Red" },
-    Value = "Rose",
+    Value = "Dark",
     Callback = function(theme)
         pcall(function()
             WindUI:SetTheme(theme)
@@ -1519,7 +1728,7 @@ Tabs.Settings:Dropdown({
 Tabs.Settings:Toggle({
     Title = "Acrylic Blur",
     Desc = "Glass background blur effect",
-    Value = true,
+    Value = false,
     Callback = function(state)
         pcall(function()
             WindUI:ToggleAcrylic(state)
@@ -1539,11 +1748,13 @@ local function unloadScript()
     end
 
     pcall(function()
-        if LocalPlayer.Character == fakeChar then
-            LocalPlayer.Character = realCharacter
-            if realHum then realHum.PlatformStand = false end
-            if Camera and realHum then Camera.CameraSubject = realHum end
-        end
+        if flying then stopFly() end
+    end)
+    pcall(function()
+        if godLoopConn then godLoopConn:Disconnect() end
+        if godRespawnConn then godRespawnConn:Disconnect() end
+        if antiFallLoopConn then antiFallLoopConn:Disconnect() end
+        if antiFallRespawnConn then antiFallRespawnConn:Disconnect() end
     end)
 
     pcall(function()
@@ -1573,10 +1784,10 @@ end
 ZeroHub.Unload = unloadScript
 
 Tabs.Settings:Button({
-    Title = "Unload zerohub",
+    Title = "Unload flow",
     Desc = "Restores character, disconnects all loops, and closes GUI",
     Callback = function()
         unloadScript()
-        notify("zerohub.cc", "Unloaded successfully")
+        notify("flow.xyz", "Unloaded successfully")
     end
 })
