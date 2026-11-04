@@ -183,6 +183,13 @@ local Window = WindUI:CreateWindow({
     Transparent = false,
     Acrylic = false,
     Theme = "Custom",
+User = {
+        Enabled = true,
+        Anonymous = false,
+        Callback = function()
+            print("clicked")
+        end,
+    },
 })
 pcall(function()
     WindUI:ToggleAcrylic(false)
@@ -190,7 +197,7 @@ end)
 
 Window:EditOpenButton({
     Title = "Open flow.xyz",
-    Icon = "wind",
+    Icon = "activity",
     CornerRadius = UDim.new(0,16),
     StrokeThickness = 1.5,
     Color = ColorSequence.new(
@@ -1138,9 +1145,9 @@ local Tabs = {
     Character = Window:Tab({ Title = "Character", Icon = "user" }),
     World = Window:Tab({ Title = "World", Icon = "globe" }),
     Disaster = Window:Tab({ Title = "Disaster", Icon = "cloud-lightning" }),
-    Auras = Window:Tab({ Title = "Auras", Icon = "zap" }),
+    Auras = Window:Tab({ Title = "Troll", Icon = "flame" }),
     Teleports = Window:Tab({ Title = "Teleports", Icon = "map-pin" }),
-    Settings = Window:Tab({ Title = "Settings", Icon = "settings" }),
+    Settings = Window:Tab({ Title = "Settings", Icon = "sliders-horizontal" }),
 }
 
 local function selectHome()
