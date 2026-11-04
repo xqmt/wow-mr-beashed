@@ -1052,7 +1052,7 @@ end)
 -- UI
 -- ============================
 local Tabs = {
-    Home = Window:Tab({ Title = "Home", Icon = "home-2" }),
+    Home = Window:Tab({ Title = "Home", Icon = "house" }),
     Character = Window:Tab({ Title = "Character", Icon = "user" }),
     World = Window:Tab({ Title = "World", Icon = "globe" }),
     Disaster = Window:Tab({ Title = "Disaster", Icon = "cloud-lightning" }),
