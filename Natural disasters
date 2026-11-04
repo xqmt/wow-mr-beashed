@@ -50,6 +50,7 @@ local ZeroHub = {
         ClearSandstormUI = false,
         TornadoEnabled = false,
         TornadoReverse = false,
+        ShowTornadoRadius = false,   -- NEW
         ClickTarget = false,
         PushAura = false,
         ClaimPhysics = false,
@@ -70,6 +71,7 @@ local ZeroHub = {
         TornadoLayers = 5,
         TornadoLayerModifier = 1.05,
         TornadoHeightModifier = 2,
+        TornadoRadiusColor = Color3.fromRGB(0, 170, 255),   -- NEW
         FlySpeed = 50,
         FlySpeedMult = 3,
     },
@@ -114,13 +116,10 @@ end
 local WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
 
 WindUI:AddTheme({
-    Name = "Custom", -- theme name
-    
-    
-    -- More Soon!
+    Name = "Custom",
     
     Accent = Color3.fromHex("#1A1A1A"),
-    Background = Color3.fromHex("#000000"), -- Accent
+    Background = Color3.fromHex("#000000"),
     BackgroundTransparency = 0.5,
     Outline = Color3.fromHex("#FFFFFF"),
     Text = Color3.fromHex("#FFFFFF"),
@@ -128,55 +127,53 @@ WindUI:AddTheme({
     Button = Color3.fromHex("#1A1A1A"),
     Icon = Color3.fromHex("#FFFFFF"),
     
-    Hover = Color3.fromHex("#FFFFFF"), -- Text
+    Hover = Color3.fromHex("#FFFFFF"),
     BackgroundTransparency = 0,
     
-    WindowBackground = Color3.fromHex("000000"), -- Background
+    WindowBackground = Color3.fromHex("000000"),
     WindowShadow = Color3.fromHex("000000"),
     
-    DialogBackground = Color3.fromHex("#000000"), -- Background
-    DialogBackgroundTransparency = 0.5, -- BackgroundTransparency
-    DialogTitle = Color3.fromHex("#FFFFFF"), -- Text
-    DialogContent = Color3.fromHex("#FFFFFF"), -- Text
-    DialogIcon = Color3.fromHex("#FFFFFF"), -- Icon
+    DialogBackground = Color3.fromHex("#000000"),
+    DialogBackgroundTransparency = 0.5,
+    DialogTitle = Color3.fromHex("#FFFFFF"),
+    DialogContent = Color3.fromHex("#FFFFFF"),
+    DialogIcon = Color3.fromHex("#FFFFFF"),
     
-    WindowTopbarButtonIcon = Color3.fromHex("a1a1aa"), -- Icon
-    WindowTopbarTitle = Color3.fromHex("FFFFFF"), -- Text
-    WindowTopbarAuthor = Color3.fromHex("FFFFFF"), -- Text
-    WindowTopbarIcon = Color3.fromHex("FFFFFF"), -- Text
+    WindowTopbarButtonIcon = Color3.fromHex("a1a1aa"),
+    WindowTopbarTitle = Color3.fromHex("FFFFFF"),
+    WindowTopbarAuthor = Color3.fromHex("FFFFFF"),
+    WindowTopbarIcon = Color3.fromHex("FFFFFF"),
     
-    TabBackground = Color3.fromHex("#FFFFFF"), -- Text
-    TabTitle = Color3.fromHex("#FFFFFF"), -- Text
-    TabIcon = Color3.fromHex("FFFFFF"), -- Icon
+    TabBackground = Color3.fromHex("#FFFFFF"),
+    TabTitle = Color3.fromHex("#FFFFFF"),
+    TabIcon = Color3.fromHex("FFFFFF"),
     
-    ElementBackground = Color3.fromHex("#FFFFFF"), -- Text
-    ElementTitle = Color3.fromHex("#FFFFFF"), -- Text
-    ElementDesc = Color3.fromHex("#FFFFFF"), -- Text
-    ElementIcon = Color3.fromHex("#a1a1aa"), -- Icon
+    ElementBackground = Color3.fromHex("#FFFFFF"),
+    ElementTitle = Color3.fromHex("#FFFFFF"),
+    ElementDesc = Color3.fromHex("#FFFFFF"),
+    ElementIcon = Color3.fromHex("#a1a1aa"),
     
-    PopupBackground = Color3.fromHex("#1A1A1A"), -- Background
-    PopupBackgroundTransparency = 0.5, -- BackgroundTransparency
-    PopupTitle = Color3.fromHex("#FFFFFF"), -- Text
-    PopupContent = Color3.fromHex("#FFFFFF"), -- Text
-    PopupIcon = Color3.fromHex("#a1a1aa"), -- Icon
+    PopupBackground = Color3.fromHex("#1A1A1A"),
+    PopupBackgroundTransparency = 0.5,
+    PopupTitle = Color3.fromHex("#FFFFFF"),
+    PopupContent = Color3.fromHex("#FFFFFF"),
+    PopupIcon = Color3.fromHex("#a1a1aa"),
     
-    DialogBackground = Color3.fromHex("#1A1A1A"), -- Background
-    DialogBackgroundTransparency = 0.5, -- Transparency
-    DialogTitle = Color3.fromHex("#FFFFFF"), -- Text
-    DialogContent = Color3.fromHex("#FFFFFF"), -- Text
-    DialogIcon = Color3.fromHex("#a1a1aa"), -- Icon
+    DialogBackground = Color3.fromHex("#1A1A1A"),
+    DialogBackgroundTransparency = 0.5,
+    DialogTitle = Color3.fromHex("#FFFFFF"),
+    DialogContent = Color3.fromHex("#FFFFFF"),
+    DialogIcon = Color3.fromHex("#a1a1aa"),
     
-    Toggle = Color3.fromHex("#52525b"), -- Button
-    ToggleBar = Color3.fromHex("#FFFFFF"), -- White
+    Toggle = Color3.fromHex("#52525b"),
+    ToggleBar = Color3.fromHex("#FFFFFF"),
     
-    Checkbox = Color3.fromHex("#52525b"), -- Button
-    CheckboxIcon = Color3.fromHex("#FFFFFF"), -- White
+    Checkbox = Color3.fromHex("#52525b"),
+    CheckboxIcon = Color3.fromHex("#FFFFFF"),
     
-    Slider = Color3.fromHex("#FFFFFF"), -- Button
-    SliderThumb = Color3.fromHex("#FFFFFF"), -- White
-    
+    Slider = Color3.fromHex("#FFFFFF"),
+    SliderThumb = Color3.fromHex("#FFFFFF"),
 })
-
 
 local Window = WindUI:CreateWindow({
     Title = "flow.xyz",
@@ -197,7 +194,7 @@ Window:EditOpenButton({
     Icon = "mouse-pointer-click",
     CornerRadius = UDim.new(0,16),
     StrokeThickness = 1.2,
-    Color = ColorSequence.new( -- gradient
+    Color = ColorSequence.new(
         Color3.fromHex("FFFFFF"), 
         Color3.fromHex("000000")
     ),
@@ -207,7 +204,7 @@ Window:EditOpenButton({
 })
 
 -- ============================
--- CHARACTER GETTERS (simplified)
+-- CHARACTER GETTERS
 -- ============================
 local LastPivot = LocalPlayer.Character and LocalPlayer.Character:GetPivot() or CFrame.new()
 
@@ -234,7 +231,7 @@ local function getRealHum()
 end
 
 -- ============================
--- GOD MODE (from file 2)
+-- GOD MODE
 -- ============================
 local godEnabled = false
 local godLoopConn, godRespawnConn
@@ -309,7 +306,7 @@ local function setGodmode(on)
 end
 
 -- ============================
--- ANTI-FALL (from file 2)
+-- ANTI-FALL
 -- ============================
 local antiFallEnabled = false
 local antiFallLoopConn, antiFallRespawnConn
@@ -366,7 +363,7 @@ local function setAntiFall(on)
 end
 
 -- ============================
--- FLY SYSTEM (from file 2)
+-- FLY SYSTEM
 -- ============================
 local flySystemEnabled = true
 local flying = false
@@ -660,6 +657,26 @@ pushAura.TouchEnded:Connect(function(hit)
         table.remove(pushInsideParts, idx)
     end
 end)
+
+-- ============================
+-- TORNADO RADIUS VISUALIZER (NEW)
+-- ============================
+local tornadoRadiusVisual = Instance.new("Part")
+tornadoRadiusVisual.Name = "ZeroHub_TornadoRadiusVisual"
+tornadoRadiusVisual.Shape = Enum.PartType.Cylinder
+tornadoRadiusVisual.Material = Enum.Material.ForceField
+tornadoRadiusVisual.Color = ZeroHub.Values.TornadoRadiusColor
+tornadoRadiusVisual.Transparency = 1
+tornadoRadiusVisual.CanCollide = false
+tornadoRadiusVisual.CanTouch = false
+tornadoRadiusVisual.CanQuery = false
+tornadoRadiusVisual.Anchored = true
+tornadoRadiusVisual.Massless = true
+tornadoRadiusVisual.CastShadow = false
+tornadoRadiusVisual.Size = Vector3.new(0.5, ZeroHub.Values.TornadoRadius * 2, ZeroHub.Values.TornadoRadius * 2)
+tornadoRadiusVisual.CFrame = CFrame.new(0, -500, 0) * CFrame.Angles(0, 0, math.rad(90))
+tornadoRadiusVisual.Parent = Workspace
+table.insert(ZeroHub.CreatedInstances, tornadoRadiusVisual)
 
 -- ============================
 -- TORNADO
@@ -1026,6 +1043,22 @@ ZeroHub.Connections.Heartbeat = RunService.RenderStepped:Connect(function(delta)
         end
     end
 
+    -- ============================
+    -- TORNADO RADIUS VISUAL UPDATE (NEW)
+    -- ============================
+    if tornadoRadiusVisual then
+        if ZeroHub.Toggles.ShowTornadoRadius and char then
+            local center = Tornado.TargetLocation or char:GetPivot().Position
+            local diameter = ZeroHub.Values.TornadoRadius * 2
+            tornadoRadiusVisual.Size = Vector3.new(0.5, diameter, diameter)
+            tornadoRadiusVisual.CFrame = CFrame.new(center) * CFrame.Angles(0, 0, math.rad(90))
+            tornadoRadiusVisual.Color = ZeroHub.Values.TornadoRadiusColor
+            tornadoRadiusVisual.Transparency = 0.6
+        else
+            tornadoRadiusVisual.Transparency = 1
+        end
+    end
+
     applyPhysicsClaim()
 end)
 
@@ -1226,7 +1259,7 @@ Tabs.Character:Toggle({
 })
 
 -- ============================
--- FLIGHT SECTION (NEW)
+-- FLIGHT SECTION
 -- ============================
 Tabs.Character:Section({ Title = "Flight" })
 
@@ -1603,7 +1636,7 @@ Tabs.Auras:Slider({
     Title = "Orbit Layers",
     Desc = "Concentric height layers of swirling parts",
     Step = 1,
-    Value = { Min = 1, Max = 25, Default = 5 },
+    Value = { Min = 1, Max = 25, Default = 1 },
     Callback = function(val)
         ZeroHub.Values.TornadoLayers = val
     end
@@ -1645,6 +1678,28 @@ Tabs.Auras:Toggle({
     Callback = function(state)
         ZeroHub.Toggles.ClickTarget = state
         Tornado.TargetLocation = nil
+    end
+})
+
+Tabs.Auras:Toggle({
+    Title = "Show Visualize Radius",
+    Desc = "Displays a circular visualization of the configured tornado radius",
+    Value = false,
+    Callback = function(state)
+        ZeroHub.Toggles.ShowTornadoRadius = state
+    end
+})
+
+Tabs.Auras:Colorpicker({
+    Title = "Visualize Color",
+    Default = Color3.fromRGB(0, 170, 255),
+    Transparency = 0,
+    Locked = false,
+    Callback = function(color)
+        ZeroHub.Values.TornadoRadiusColor = color
+        if tornadoRadiusVisual then
+            tornadoRadiusVisual.Color = color
+        end
     end
 })
 
