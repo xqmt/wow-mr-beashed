@@ -119,7 +119,7 @@ WindUI:AddTheme({
     Name = "Custom",
     
     Accent = Color3.fromHex("#1A1A1A"),
-    Background = Color3.fromHex("#FFFFFF"),
+    Background = Color3.fromHex("#000000"),
     BackgroundTransparency = 0.5,
     Outline = Color3.fromHex("#FFFFFF"),
     Text = Color3.fromHex("#FFFFFF"),
