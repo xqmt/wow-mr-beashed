@@ -115,6 +115,7 @@ local WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footag
 
 local Window = WindUI:CreateWindow({
     Title = "flow.xyz",
+    Icon = "atom",
     Author = "Natural Disaster Survival",
     Folder = "flow_nds",
     Size = UDim2.fromOffset(620, 480),
@@ -127,13 +128,13 @@ pcall(function()
 end)
 
 Window:EditOpenButton({
-    Title = "Open Example UI",
-    Icon = "monitor",
+    Title = "Open flow.xyz",
+    Icon = "mouse-pointer-click",
     CornerRadius = UDim.new(0,16),
     StrokeThickness = 1.2,
     Color = ColorSequence.new( -- gradient
-        Color3.fromHex("FF0F7B"), 
-        Color3.fromHex("F89B29")
+        Color3.fromHex("FFFFFF"), 
+        Color3.fromHex("000000")
     ),
     OnlyMobile = false,
     Enabled = true,
