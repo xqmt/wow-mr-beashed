@@ -176,7 +176,7 @@ WindUI:AddTheme({
 
 local Window = WindUI:CreateWindow({
     Title = "flow.xyz",
-    Icon = "wind",
+    Icon = "solar:wind-bold",
     Author = "Natural Disaster Survival",
     Folder = "flow_nds",
     Size = UDim2.fromOffset(620, 480),
@@ -196,8 +196,8 @@ pcall(function()
 end)
 
 Window:EditOpenButton({
-    Title = "Open flow.xyz",
-    Icon = "code-xml",
+    Title = "Open flow",
+    Icon = "solar:wind-bold",
     CornerRadius = UDim.new(0,16),
     StrokeThickness = 1.5,
     Color = ColorSequence.new(
@@ -1141,13 +1141,13 @@ end)
 -- UI
 -- ============================
 local Tabs = {
-    Home = Window:Tab({ Title = "Home", Icon = "house" }),
-    Character = Window:Tab({ Title = "Character", Icon = "user" }),
-    World = Window:Tab({ Title = "World", Icon = "globe" }),
-    Disaster = Window:Tab({ Title = "Disaster", Icon = "cloud" }),
-    Auras = Window:Tab({ Title = "Troll", Icon = "flame" }),
-    Teleports = Window:Tab({ Title = "Teleports", Icon = "map-pin" }),
-    Settings = Window:Tab({ Title = "Settings", Icon = "sliders-horizontal" }),
+    Home = Window:Tab({ Title = "Home", Icon = "solar:home-2-bold" }),
+    Character = Window:Tab({ Title = "Character", Icon = "solar:user-circle-bold" }),
+    World = Window:Tab({ Title = "World", Icon = "solar:earth-bold" }),
+    Disaster = Window:Tab({ Title = "Disaster", Icon = "solar:cloud-bold" }),
+    Auras = Window:Tab({ Title = "Troll", Icon = "solar:flame-bold" }),
+    Teleports = Window:Tab({ Title = "Teleports", Icon = "solar:map-arrow-square-bold" }),
+    Settings = Window:Tab({ Title = "Settings", Icon = "solar:settings-bold" }),
 }
 
 local function selectHome()
