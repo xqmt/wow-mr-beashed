@@ -176,7 +176,7 @@ WindUI:AddTheme({
 
 local Window = WindUI:CreateWindow({
     Title = "flow.xyz",
-    Icon = "solar:wind-bold",
+    Icon = "solar:programming-outline",
     Author = "Natural Disaster Survival",
     Folder = "flow_nds",
     Size = UDim2.fromOffset(620, 480),
@@ -197,7 +197,7 @@ end)
 
 Window:EditOpenButton({
     Title = "Open flow",
-    Icon = "solar:wind-bold",
+    Icon = "solar:programming-outline",
     CornerRadius = UDim.new(0,16),
     StrokeThickness = 1.5,
     Color = ColorSequence.new(
