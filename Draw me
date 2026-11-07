@@ -59,22 +59,12 @@ WindUI:AddTheme({
 local Window = WindUI:CreateWindow({
     Title = "Ashu Hub",
     Icon = "rbxassetid://82367817676382",
-    IconThemed = true,
     Folder = "Ashu Hub",
     Size = UDim2.fromOffset(500, 400),
-    Transparent = true,
-    Theme = "Light",
-    Background = nil,
-    User = {
-        Enabled = true,
-        Callback = function() end,
-        Anonymous = false
-    },
-    SideBarWidth = 200,
-    ScrollBarEnabled = true
-})
+    Transparent = false,
+    Theme = "Custom",
 
-Window:EditOpenButton({
+  Window:EditOpenButton({
     Title = "Open Main UI",
     Icon = "rbxassetid://82367817676382",
     CornerRadius = UDim.new(0,16),
@@ -88,7 +78,7 @@ Window:EditOpenButton({
     Draggable = true,
 })
 
-Window:Tag({ Title = "Draw me", Color = "ElementBackground" })
+Window:Tag({ Title = "Draw me", Color = "101010" })
 
 local Tab = Window:Tab({  
     Title = "draw",  
