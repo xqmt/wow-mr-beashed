@@ -1678,6 +1678,15 @@ urlSection:Button({
 local infoSection = DrawTab:Section({Title = "Info", Icon = "solar:info-circle-bold"})
 
 infoSection:Paragraph({
+    Title = "How to get URL ?",
+    Desc = "Use This Website  -  https://postimg.cc",
+    Image = "solar:gallery-bold",
+    Color = "Blue",
+    ImageSize = 36,
+    ThumbnailSize = 80,
+})
+
+infoSection:Paragraph({
     Title = "Supported Formats",
     Desc = "Image types — .jpg, .jpeg, .png",
     Image = "solar:gallery-bold",
