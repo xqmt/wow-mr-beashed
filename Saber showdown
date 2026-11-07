@@ -1,10 +1,5 @@
 --!nocheck
--- ============================================================
---  Ashu Hub  —  WindUI Edition
---  Original: discord.gg/syncrypt
--- ============================================================
 
--- [[ Services ]]
 local Players            = game:GetService("Players")
 local RunService         = game:GetService("RunService")
 local UserInputService   = game:GetService("UserInputService")
@@ -127,7 +122,7 @@ end
 -- Window & Tabs
 -- ============================================================
 local Window = WindUI:CreateWindow({
-    Title  = "Ashu Hub",
+    Title  = "xplicit.xyz",
     Icon   = "rbxassetid://82367817676382",
     Theme  = "Custom",
     ToggleKey = Enum.KeyCode.RightShift,
