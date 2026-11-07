@@ -1,7 +1,7 @@
 --by kanl
 local WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/nebx3/cred5t4332432424/refs/heads/main/credibility_muppet61211.lua"))()
 local Window = WindUI:CreateWindow({
-    Title = "Credibility",
+    Title = "Ashu Hub",
     Icon = "brush",
     IconThemed = true,
     Folder = "Ashu Hub",
