@@ -42,70 +42,47 @@ do
 end
 
 WindUI:AddTheme({
-    Name = "Custom", -- theme name
-    
-    
-    -- More Soon!
-    
+    Name = "Custom",
     Accent = Color3.fromHex("#18181b"),
-    Background = Color3.fromHex("#000000"), -- Accent
+    Background = Color3.fromHex("#000000"),
     BackgroundTransparency = 0,
     Outline = Color3.fromHex("#FFFFFF"),
     Text = Color3.fromHex("#FFFFFF"),
     Placeholder = Color3.fromHex("#7a7a7a"),
     Button = Color3.fromHex("#52525b"),
     Icon = Color3.fromHex("#FFFFFF"),
-    
-    Hover = Color3.fromHex("#FFFFFF"), -- Text
-    BackgroundTransparency = 0,
-    
-    WindowBackground = Color3.fromHex("000000"), -- Background
+    Hover = Color3.fromHex("#FFFFFF"),
+    WindowBackground = Color3.fromHex("000000"),
     WindowShadow = Color3.fromHex("000000"),
-    
-    DialogBackground = Color3.fromHex("#101010"), -- Background
-    DialogBackgroundTransparency = 0.5, -- BackgroundTransparency
-    DialogTitle = Color3.fromHex("#FFFFFF"), -- Text
-    DialogContent = Color3.fromHex("#FFFFFF"), -- Text
-    DialogIcon = Color3.fromHex("#FFFFFF"), -- Icon
-    
-    WindowTopbarButtonIcon = Color3.fromHex("FFFFFF"), -- Icon
-    WindowTopbarTitle = Color3.fromHex("FFFFFF"), -- Text
-    WindowTopbarAuthor = Color3.fromHex("FFFFFF"), -- Text
-    WindowTopbarIcon = Color3.fromHex("FFFFFF"), -- Text
-    
-    TabBackground = Color3.fromHex("#FFFFFF"), -- Text
-    TabTitle = Color3.fromHex("#FFFFFF"), -- Text
-    TabIcon = Color3.fromHex("FFFFFF"), -- Icon
-    
-    ElementBackground = Color3.fromHex("#101010"), -- Text
-    ElementTitle = Color3.fromHex("#FFFFFF"), -- Text
-    ElementDesc = Color3.fromHex("#FFFFFF"), -- Text
-    ElementIcon = Color3.fromHex("#a1a1aa"), -- Icon
-    
-    PopupBackground = Color3.fromHex("#000000"), -- Background
-    PopupBackgroundTransparency = 0.5, -- BackgroundTransparency
-    PopupTitle = Color3.fromHex("#FFFFFF"), -- Text
-    PopupContent = Color3.fromHex("#FFFFFF"), -- Text
-    PopupIcon = Color3.fromHex("#FFFFFF"), -- Icon
-    
-    DialogBackground = Color3.fromHex("#101010"), -- Background
-    DialogBackgroundTransparency = 0, -- Transparency
-    DialogTitle = Color3.fromHex("#FFFFFF"), -- Text
-    DialogContent = Color3.fromHex("#FFFFFF"), -- Text
-    DialogIcon = Color3.fromHex("#a1a1aa"), -- Icon
-    
-    Toggle = Color3.fromHex("#52525b"), -- Button
-    ToggleBar = Color3.fromHex("#FFFFFF"), -- White
-    
-    Checkbox = Color3.fromHex("#52525b"), -- Button
-    CheckboxIcon = Color3.fromHex("#FFFFFF"), -- White
-    
-    Slider = Color3.fromHex("#FFFFFF"), -- Button
-    SliderThumb = Color3.fromHex("#FFFFFF"), -- White
-    
+    DialogBackground = Color3.fromHex("#101010"),
+    DialogBackgroundTransparency = 0,
+    DialogTitle = Color3.fromHex("#FFFFFF"),
+    DialogContent = Color3.fromHex("#FFFFFF"),
+    DialogIcon = Color3.fromHex("#a1a1aa"),
+    WindowTopbarButtonIcon = Color3.fromHex("FFFFFF"),
+    WindowTopbarTitle = Color3.fromHex("FFFFFF"),
+    WindowTopbarAuthor = Color3.fromHex("FFFFFF"),
+    WindowTopbarIcon = Color3.fromHex("FFFFFF"),
+    TabBackground = Color3.fromHex("#FFFFFF"),
+    TabTitle = Color3.fromHex("#FFFFFF"),
+    TabIcon = Color3.fromHex("FFFFFF"),
+    ElementBackground = Color3.fromHex("#101010"),
+    ElementTitle = Color3.fromHex("#FFFFFF"),
+    ElementDesc = Color3.fromHex("#FFFFFF"),
+    ElementIcon = Color3.fromHex("#a1a1aa"),
+    PopupBackground = Color3.fromHex("#000000"),
+    PopupBackgroundTransparency = 0.5,
+    PopupTitle = Color3.fromHex("#FFFFFF"),
+    PopupContent = Color3.fromHex("#FFFFFF"),
+    PopupIcon = Color3.fromHex("#FFFFFF"),
+    Toggle = Color3.fromHex("#52525b"),
+    ToggleBar = Color3.fromHex("#FFFFFF"),
+    Checkbox = Color3.fromHex("#52525b"),
+    CheckboxIcon = Color3.fromHex("#FFFFFF"),
+    Slider = Color3.fromHex("#FFFFFF"),
+    SliderThumb = Color3.fromHex("#FFFFFF"),
 })
 
--- [[ Notify helper ]]
 local function Notify(title, desc, duration)
     duration = duration or 3
     local ok = pcall(function()
@@ -133,8 +110,8 @@ Window:EditOpenButton({
     Icon = "rbxassetid://82367817676382",
     CornerRadius = UDim.new(0,16),
     StrokeThickness = 1.5,
-    Color = ColorSequence.new( -- gradient
-        Color3.fromHex("FFFFFF"), 
+    Color = ColorSequence.new(
+        Color3.fromHex("FFFFFF"),
         Color3.fromHex("000000")
     ),
     OnlyMobile = false,
@@ -144,10 +121,11 @@ Window:EditOpenButton({
 
 Window:Tag({ Title = "Saber Showdown", Color = "ElementBackground" })
 
-local CombatTab    = Window:Tab({Title = "Main",   Icon = "solar:home-2-bold"})
-local TrollTab     = Window:Tab({Title = "Avatar Steal",    Icon = "solar:user-circle-bold"})
-local OPTab        = Window:Tab({Title = "Misc",       Icon = "solar:fire-bold"})
-local SettingsTab  = Window:Tab({Title = "Settings", Icon = "solar:settings-bold"})
+local CombatTab    = Window:Tab({Title = "Main",         Icon = "solar:home-2-bold"})
+local TrollTab     = Window:Tab({Title = "Avatar Steal", Icon = "solar:user-circle-bold"})
+local OPTab        = Window:Tab({Title = "Misc",         Icon = "solar:fire-bold"})
+local ESPTab       = Window:Tab({Title = "ESP",          Icon = "solar:eye-bold"})
+local SettingsTab  = Window:Tab({Title = "Settings",     Icon = "solar:settings-bold"})
 
 -- ============================================================
 -- Keybind State
@@ -159,9 +137,6 @@ local keys = {
     KataKey   = Enum.KeyCode.R,
 }
 
--- ============================================================
--- Helpers
--- ============================================================
 local function getMyHRP()
     local char = LocalPlayer.Character
     return char and char:FindFirstChild("HumanoidRootPart")
@@ -446,21 +421,9 @@ end
 -- ============================================================
 -- Avatar Stealer
 -- ============================================================
-local function stealAvatar(query)
-    if not query or query == "" then return end
-    local lower = string.lower(query)
-    local found
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer and p.Character then
-            local n = string.lower(p.Name)
-            local d = string.lower(p.DisplayName or "")
-            if string.find(n, lower, 1, true) or string.find(d, lower, 1, true) then
-                found = p; break
-            end
-        end
-    end
-    if not found or not found.Character then return end
-    local hum = found.Character:FindFirstChildOfClass("Humanoid")
+local function stealAvatar(player)
+    if not player or not player.Character then return end
+    local hum = player.Character:FindFirstChildOfClass("Humanoid")
     if not hum then return end
     local desc = hum:GetAppliedDescription()
     if not desc then return end
@@ -637,6 +600,201 @@ task.spawn(function()
 end)
 
 -- ============================================================
+-- ESP System (Highlights + ScreenGui Flags + Avatar Headshot)
+-- ============================================================
+local espScreen           = nil
+local espEnabled          = false
+local espHighlightEnabled = true
+local espFlagEnabled      = true
+local espShowName         = true
+local espShowHealth       = true
+local espShowHeadshot     = true
+local espMaxDist          = 1000
+
+local espData  = {}   -- [model] = {highlight, billboard}
+local espAccum = 0
+
+local function ensureEspGui()
+    if espScreen and espScreen.Parent then return espScreen end
+    espScreen = Instance.new("ScreenGui")
+    espScreen.Name           = "AshuESP"
+    espScreen.ResetOnSpawn   = false
+    espScreen.IgnoreGuiInset = true
+    espScreen.DisplayOrder   = 999
+    espScreen.Parent         = (gethui and gethui()) or CoreGui
+    return espScreen
+end
+
+local function createHighlightFor(model)
+    local hl = Instance.new("Highlight")
+    hl.Name               = "AshuESP_HL"
+    hl.Adornee            = model
+    hl.FillColor          = Color3.fromRGB(255, 40, 40)
+    hl.FillTransparency   = 0.5
+    hl.OutlineColor       = Color3.fromRGB(255, 255, 255)
+    hl.OutlineTransparency= 0
+    hl.DepthMode          = Enum.HighlightDepthMode.AlwaysOnTop
+    hl.Parent             = ensureEspGui()
+    return hl
+end
+
+local function createBillboardFor(model, player)
+    local hrp = model:FindFirstChild("HumanoidRootPart")
+    if not hrp then return nil end
+
+    local bb = Instance.new("BillboardGui")
+    bb.Name        = "AshuESP_BB"
+    bb.Adornee     = hrp
+    bb.Size        = UDim2.new(0, 220, 0, 90)
+    bb.StudsOffset = Vector3.new(0, 4, 0)
+    bb.AlwaysOnTop = true
+    bb.MaxDistance = espMaxDist
+
+    -- Avatar Headshot (ImageLabel)
+    local headshot = Instance.new("ImageLabel")
+    headshot.Name                   = "Headshot"
+    headshot.Size                   = UDim2.new(0, 42, 0, 42)
+    headshot.Position               = UDim2.new(0.5, -21, 0, 0)
+    headshot.BackgroundColor3       = Color3.fromRGB(20, 20, 20)
+    headshot.BorderSizePixel        = 0
+    headshot.Image                  = "rbxthumb://type=AvatarHeadShot&id="
+        .. tostring(player.UserId) .. "&w=150&h=150"
+    headshot.Parent                 = bb
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent       = headshot
+    local stroke = Instance.new("UIStroke")
+    stroke.Thickness     = 2
+    stroke.Color         = Color3.fromRGB(255, 255, 255)
+    stroke.Transparency  = 0.15
+    stroke.Parent        = headshot
+
+    -- Name
+    local nameLabel = Instance.new("TextLabel")
+    nameLabel.Name                   = "NameLabel"
+    nameLabel.Size                   = UDim2.new(1, 0, 0, 18)
+    nameLabel.Position               = UDim2.new(0, 0, 0, 45)
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.TextStrokeTransparency = 0
+    nameLabel.TextColor3             = Color3.new(1, 1, 1)
+    nameLabel.TextSize               = 14
+    nameLabel.Font                   = Enum.Font.GothamBold
+    nameLabel.Text                   = player.DisplayName or player.Name
+    nameLabel.Parent                 = bb
+
+    -- Health
+    local healthLabel = Instance.new("TextLabel")
+    healthLabel.Name                   = "HealthLabel"
+    healthLabel.Size                   = UDim2.new(1, 0, 0, 16)
+    healthLabel.Position               = UDim2.new(0, 0, 0, 64)
+    healthLabel.BackgroundTransparency = 1
+    healthLabel.TextStrokeTransparency = 0
+    healthLabel.TextColor3             = Color3.fromRGB(0, 255, 0)
+    healthLabel.TextSize               = 13
+    healthLabel.Font                   = Enum.Font.GothamBold
+    healthLabel.Text                   = "100 / 100 HP"
+    healthLabel.Parent                 = bb
+
+    bb.Parent = ensureEspGui()
+    return bb
+end
+
+local function removeEspFor(model)
+    local d = espData[model]
+    if d then
+        if d.highlight then d.highlight:Destroy() end
+        if d.billboard then d.billboard:Destroy() end
+        espData[model] = nil
+    end
+end
+
+local function clearAllEsp()
+    for model in pairs(espData) do removeEspFor(model) end
+    espData = {}
+end
+
+local function updateEspTick()
+    local myHRP = getMyHRP()
+    if not myHRP then return end
+    local myPos = myHRP.Position
+
+    for model, _ in pairs(espData) do
+        local hum = model:FindFirstChildOfClass("Humanoid")
+        local hrp = model:FindFirstChild("HumanoidRootPart")
+        local valid = model.Parent ~= nil and hum and hum.Health > 0 and hrp
+            and (hrp.Position - myPos).Magnitude <= espMaxDist
+        if not valid then removeEspFor(model) end
+    end
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer then
+            local char = plr.Character
+            local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+            local hum  = char and char:FindFirstChildOfClass("Humanoid")
+            if char and hrp and hum and hum.Health > 0
+                and (hrp.Position - myPos).Magnitude <= espMaxDist then
+
+                local d = espData[char]
+                if not d then
+                    d = {}
+                    espData[char] = d
+                end
+
+                if espHighlightEnabled then
+                    if not d.highlight or not d.highlight.Parent then
+                        d.highlight = createHighlightFor(char)
+                    end
+                elseif d.highlight then
+                    d.highlight:Destroy() d.highlight = nil
+                end
+
+                if espFlagEnabled then
+                    if not d.billboard or not d.billboard.Parent then
+                        d.billboard = createBillboardFor(char, plr)
+                    end
+                elseif d.billboard then
+                    d.billboard:Destroy() d.billboard = nil
+                end
+
+                if d.billboard then
+                    local headshot    = d.billboard:FindFirstChild("Headshot")
+                    local nameLabel   = d.billboard:FindFirstChild("NameLabel")
+                    local healthLabel = d.billboard:FindFirstChild("HealthLabel")
+
+                    if headshot then headshot.Visible = espShowHeadshot end
+
+                    if nameLabel then
+                        nameLabel.Visible = espShowName
+                        nameLabel.Text    = plr.DisplayName or plr.Name
+                    end
+
+                    if healthLabel then
+                        healthLabel.Visible = espShowHealth
+                        local hp    = math.floor(hum.Health)
+                        local maxHp = math.floor(hum.MaxHealth)
+                        healthLabel.Text = string.format("%d / %d HP", hp, maxHp)
+                        local frac = math.clamp(hp / math.max(maxHp, 1), 0, 1)
+                        healthLabel.TextColor3 = Color3.fromRGB(
+                            math.floor(255 * (1 - frac)),
+                            math.floor(255 * frac),
+                            60
+                        )
+                    end
+                end
+            end
+        end
+    end
+end
+
+RunService.Heartbeat:Connect(function(dt)
+    if not espEnabled then return end
+    espAccum = espAccum + dt
+    if espAccum < 0.25 then return end
+    espAccum = 0
+    updateEspTick()
+end)
+
+-- ============================================================
 -- UI : COMBAT
 -- ============================================================
 local combatDamage = CombatTab:Section({Title = "2x Damage", Icon = "swords"})
@@ -764,25 +922,96 @@ combatMoves:Input({
 })
 
 -- ============================================================
--- UI : TROLL
+-- UI : TROLL (Avatar Stealer Dropdown)
 -- ============================================================
-local trollStealer = TrollTab:Section({Title = "Avatar Stealer", Icon = "user"})
-local stealQuery = ""
+local trollStealer   = TrollTab:Section({Title = "Avatar Stealer", Icon = "user"})
+local selectedPlayer = nil
+local playerLookup   = {}
 
-trollStealer:Input({
-    Title = "Player Name",
-    Desc  = "Enter username or partial name",
-    Placeholder = "Username...",
-    Value = "",
-    Callback = function(t) stealQuery = t end,
+local function playerLabel(p)
+    local dn = p.DisplayName or p.Name
+    if dn ~= p.Name then
+        return string.format("%s (@%s)", dn, p.Name)
+    end
+    return p.Name
+end
+
+local function buildPlayerList()
+    for k in pairs(playerLookup) do playerLookup[k] = nil end
+    local values = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer then
+            local label = playerLabel(p)
+            playerLookup[label]                    = p
+            playerLookup[p.Name]                   = p
+            playerLookup[p.DisplayName or p.Name]  = p
+            playerLookup[tostring(p.UserId)]       = p
+            table.insert(values, {
+                Title = label,
+                Icon  = "rbxthumb://type=AvatarHeadShot&id=" .. tostring(p.UserId) .. "&w=150&h=150",
+            })
+        end
+    end
+    return values
+end
+
+local playerDropdown = trollStealer:Dropdown({
+    Title = "Select Player",
+    Values = buildPlayerList(),
+    Multi  = false,
+    Callback = function(selected)
+        local sel  = selected
+        local iter = 0
+        while type(sel) == "table" and iter < 10 do
+            iter = iter + 1
+            if sel.Title then
+                sel = sel.Title
+            elseif sel[1] ~= nil then
+                sel = sel[1]
+            else
+                sel = nil
+            end
+        end
+        selectedPlayer = (type(sel) == "string") and playerLookup[sel] or nil
+    end,
 })
+
+local function refreshPlayerDropdown()
+    if not playerDropdown then return end
+    local newValues = buildPlayerList()
+    if selectedPlayer and not selectedPlayer.Parent then
+        selectedPlayer = nil
+    end
+    pcall(function() playerDropdown:Refresh(newValues) end)
+end
+
+Players.PlayerAdded:Connect(function()
+    task.wait(0.5)
+    refreshPlayerDropdown()
+end)
+
+Players.PlayerRemoving:Connect(function(p)
+    if selectedPlayer == p then selectedPlayer = nil end
+    task.wait(0.2)
+    refreshPlayerDropdown()
+end)
+
 trollStealer:Button({
     Title = "Steal Avatar",
-    Desc  = "Copy target player's outfit",
     Icon  = "copy",
     Callback = function()
-        stealAvatar(stealQuery)
-        Notify("Outfit Stealer", "Attempting to copy outfit...", 2)
+        if not selectedPlayer then
+            Notify("Outfit Stealer", "Select Player", 2)
+            return
+        end
+        if not selectedPlayer.Character then
+            Notify("Outfit Stealer",
+                "ผู้เล่น " .. selectedPlayer.Name .. " ยังโหลดตัวละครไม่เสร็จ", 2)
+            return
+        end
+        stealAvatar(selectedPlayer)
+        Notify("Outfit Stealer",
+            "Copying" .. selectedPlayer.Name .. "...", 2)
     end,
 })
 
@@ -831,6 +1060,89 @@ opWL:Dropdown({
     Callback = function(selected)
         whitelist = {}
         for _, name in ipairs(selected) do whitelist[name] = true end
+    end,
+})
+
+-- ============================================================
+-- UI : ESP
+-- ============================================================
+local espSection = ESPTab:Section({Title = "Player ESP", Icon = "eye"})
+
+espSection:Toggle({
+    Title = "Enable ESP",
+    Value = false,
+    Callback = function(state)
+        espEnabled = state
+        if state then
+            ensureEspGui()
+            Notify("ESP", "Enabled", 2)
+        else
+            clearAllEsp()
+            Notify("ESP", "Disabled", 2)
+        end
+    end,
+})
+
+espSection:Toggle({
+    Title = "Highlights",
+    Value = true,
+    Callback = function(state)
+        espHighlightEnabled = state
+        if not state then
+            for _, d in pairs(espData) do
+                if d.highlight then d.highlight:Destroy() d.highlight = nil end
+            end
+        end
+    end,
+})
+
+espSection:Toggle({
+    Title = "Flags",
+    Value = true,
+    Callback = function(state)
+        espFlagEnabled = state
+        if not state then
+            for _, d in pairs(espData) do
+                if d.billboard then d.billboard:Destroy() d.billboard = nil end
+            end
+        end
+    end,
+})
+
+espSection:Toggle({
+    Title = "Avatar",
+    Value = true,
+    Callback = function(state)
+        espShowHeadshot = state
+        if not state then
+            for _, d in pairs(espData) do
+                local hs = d.billboard and d.billboard:FindFirstChild("Headshot")
+                if hs then hs.Visible = false end
+            end
+        end
+    end,
+})
+
+espSection:Toggle({
+    Title = "Show Name",
+    Value = true,
+    Callback = function(state) espShowName = state end,
+})
+
+espSection:Toggle({
+    Title = "Show Health",
+    Value = true,
+    Callback = function(state) espShowHealth = state end,
+})
+
+espSection:Slider({
+    Title = "Max Distance",
+    Value = {Min = 100, Max = 5000, Default = 1000},
+    Callback = function(v)
+        espMaxDist = math.floor(v)
+        for _, d in pairs(espData) do
+            if d.billboard then d.billboard.MaxDistance = espMaxDist end
+        end
     end,
 })
 
