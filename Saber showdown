@@ -46,6 +46,70 @@ do
     end
 end
 
+WindUI:AddTheme({
+    Name = "Custom", -- theme name
+    
+    
+    -- More Soon!
+    
+    Accent = Color3.fromHex("#18181b"),
+    Background = Color3.fromHex("#000000"), -- Accent
+    BackgroundTransparency = 0,
+    Outline = Color3.fromHex("#FFFFFF"),
+    Text = Color3.fromHex("#FFFFFF"),
+    Placeholder = Color3.fromHex("#7a7a7a"),
+    Button = Color3.fromHex("#52525b"),
+    Icon = Color3.fromHex("#FFFFFF"),
+    
+    Hover = Color3.fromHex("#FFFFFF"), -- Text
+    BackgroundTransparency = 0,
+    
+    WindowBackground = Color3.fromHex("000000"), -- Background
+    WindowShadow = Color3.fromHex("000000"),
+    
+    DialogBackground = Color3.fromHex("#101010"), -- Background
+    DialogBackgroundTransparency = 0.5, -- BackgroundTransparency
+    DialogTitle = Color3.fromHex("#FFFFFF"), -- Text
+    DialogContent = Color3.fromHex("#FFFFFF"), -- Text
+    DialogIcon = Color3.fromHex("#FFFFFF"), -- Icon
+    
+    WindowTopbarButtonIcon = Color3.fromHex("FFFFFF"), -- Icon
+    WindowTopbarTitle = Color3.fromHex("FFFFFF"), -- Text
+    WindowTopbarAuthor = Color3.fromHex("FFFFFF"), -- Text
+    WindowTopbarIcon = Color3.fromHex("FFFFFF"), -- Text
+    
+    TabBackground = Color3.fromHex("#FFFFFF"), -- Text
+    TabTitle = Color3.fromHex("#FFFFFF"), -- Text
+    TabIcon = Color3.fromHex("FFFFFF"), -- Icon
+    
+    ElementBackground = Color3.fromHex("#101010"), -- Text
+    ElementTitle = Color3.fromHex("#FFFFFF"), -- Text
+    ElementDesc = Color3.fromHex("#FFFFFF"), -- Text
+    ElementIcon = Color3.fromHex("#a1a1aa"), -- Icon
+    
+    PopupBackground = Color3.fromHex("#000000"), -- Background
+    PopupBackgroundTransparency = 0.5, -- BackgroundTransparency
+    PopupTitle = Color3.fromHex("#FFFFFF"), -- Text
+    PopupContent = Color3.fromHex("#FFFFFF"), -- Text
+    PopupIcon = Color3.fromHex("#FFFFFF"), -- Icon
+    
+    DialogBackground = Color3.fromHex("#101010"), -- Background
+    DialogBackgroundTransparency = 0, -- Transparency
+    DialogTitle = Color3.fromHex("#FFFFFF"), -- Text
+    DialogContent = Color3.fromHex("#FFFFFF"), -- Text
+    DialogIcon = Color3.fromHex("#a1a1aa"), -- Icon
+    
+    Toggle = Color3.fromHex("#52525b"), -- Button
+    ToggleBar = Color3.fromHex("#FFFFFF"), -- White
+    
+    Checkbox = Color3.fromHex("#52525b"), -- Button
+    CheckboxIcon = Color3.fromHex("#FFFFFF"), -- White
+    
+    Slider = Color3.fromHex("#FFFFFF"), -- Button
+    SliderThumb = Color3.fromHex("#FFFFFF"), -- White
+    
+})
+
 -- [[ Notify helper ]]
 local function Notify(title, desc, duration)
     duration = duration or 3
@@ -65,7 +129,7 @@ end
 local Window = WindUI:CreateWindow({
     Title  = "Ashu Hub",
     Icon   = "rbxassetid://82367817676382",
-    Theme  = "Dark",
+    Theme  = "Custom",
     ToggleKey = Enum.KeyCode.RightShift,
 })
 
