@@ -329,6 +329,115 @@ local function doKata()
 end
 
 -- ============================================================
+-- Mobile Move Buttons (Aerial / Kata)
+-- ============================================================
+local mobileButtonsEnabled = false
+local mobileButtonsGui     = nil
+
+local function ensureMobileButtonsGui()
+    if mobileButtonsGui and mobileButtonsGui.Parent then return mobileButtonsGui end
+
+    mobileButtonsGui = Instance.new("ScreenGui")
+    mobileButtonsGui.Name           = "AshuMobileButtons"
+    mobileButtonsGui.ResetOnSpawn   = false
+    mobileButtonsGui.IgnoreGuiInset = true
+    mobileButtonsGui.DisplayOrder   = 100
+    mobileButtonsGui.Parent         = (gethui and gethui()) or CoreGui
+
+    local container = Instance.new("Frame")
+    container.Name                 = "Container"
+    container.Size                 = UDim2.new(0, 80, 0, 190)
+    container.Position             = UDim2.new(0, 20, 0.5, -95)
+    container.BackgroundTransparency = 1
+    container.Parent               = mobileButtonsGui
+
+    -- Drag handle (ลากได้ทั้งเมาส์และนิ้ว)
+    local handle = Instance.new("TextButton")
+    handle.Size                  = UDim2.new(1, 0, 0, 22)
+    handle.BackgroundColor3      = Color3.fromRGB(20, 20, 20)
+    handle.BackgroundTransparency = 0.2
+    handle.Text                  = "≡ Move"
+    handle.TextColor3            = Color3.new(1, 1, 1)
+    handle.Font                  = Enum.Font.GothamBold
+    handle.TextSize              = 12
+    handle.AutoButtonColor       = false
+    handle.Parent                = container
+    Instance.new("UICorner", handle).CornerRadius = UDim.new(0, 8)
+
+    local function makeBtn(text, yOffset, onClick)
+        local btn = Instance.new("TextButton")
+        btn.Size                  = UDim2.new(0, 70, 0, 70)
+        btn.Position              = UDim2.new(0.5, -35, 0, yOffset)
+        btn.BackgroundColor3      = Color3.fromRGB(20, 20, 20)
+        btn.BackgroundTransparency = 0.15
+        btn.TextColor3            = Color3.new(1, 1, 1)
+        btn.Text                  = text
+        btn.Font                  = Enum.Font.GothamBold
+        btn.TextSize              = 14
+        btn.AutoButtonColor       = true
+        btn.Parent                = container
+
+        local c = Instance.new("UICorner")
+        c.CornerRadius = UDim.new(1, 0)
+        c.Parent       = btn
+
+        local s = Instance.new("UIStroke")
+        s.Thickness    = 1.5
+        s.Color        = Color3.new(1, 1, 1)
+        s.Transparency = 0.2
+        s.Parent       = btn
+
+        btn.MouseButton1Click:Connect(onClick)
+        return btn
+    end
+
+    makeBtn("Aerial", 30,  doAerial)
+    makeBtn("Kata",   108, doKata)
+
+    -- Custom drag (รองรับ touch)
+    local dragging, dragStart, startPos = false, nil, nil
+
+    handle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+            dragging  = true
+            dragStart = input.Position
+            startPos  = container.Position
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if not dragging then return end
+        if input.UserInputType == Enum.UserInputType.MouseMovement
+            or input.UserInputType == Enum.UserInputType.Touch then
+            local delta = input.Position - dragStart
+            container.Position = UDim2.new(
+                startPos.X.Scale, startPos.X.Offset + delta.X,
+                startPos.Y.Scale, startPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+
+    return mobileButtonsGui
+end
+
+local function setMobileButtonsEnabled(state)
+    mobileButtonsEnabled = state
+    if state then
+        ensureMobileButtonsGui().Enabled = true
+    elseif mobileButtonsGui then
+        mobileButtonsGui.Enabled = false
+    end
+end
+
+-- ============================================================
 -- Whitelist
 -- ============================================================
 local whitelist = {}
@@ -600,7 +709,7 @@ task.spawn(function()
 end)
 
 -- ============================================================
--- ESP System (Highlights + ScreenGui Flags + Avatar Headshot)
+-- ESP System
 -- ============================================================
 local espScreen           = nil
 local espEnabled          = false
@@ -611,7 +720,7 @@ local espShowHealth       = true
 local espShowHeadshot     = true
 local espMaxDist          = 1000
 
-local espData  = {}   -- [model] = {highlight, billboard}
+local espData  = {}
 local espAccum = 0
 
 local function ensureEspGui()
@@ -650,7 +759,6 @@ local function createBillboardFor(model, player)
     bb.AlwaysOnTop = true
     bb.MaxDistance = espMaxDist
 
-    -- Avatar Headshot (ImageLabel)
     local headshot = Instance.new("ImageLabel")
     headshot.Name                   = "Headshot"
     headshot.Size                   = UDim2.new(0, 42, 0, 42)
@@ -669,7 +777,6 @@ local function createBillboardFor(model, player)
     stroke.Transparency  = 0.15
     stroke.Parent        = headshot
 
-    -- Name
     local nameLabel = Instance.new("TextLabel")
     nameLabel.Name                   = "NameLabel"
     nameLabel.Size                   = UDim2.new(1, 0, 0, 18)
@@ -682,7 +789,6 @@ local function createBillboardFor(model, player)
     nameLabel.Text                   = player.DisplayName or player.Name
     nameLabel.Parent                 = bb
 
-    -- Health
     local healthLabel = Instance.new("TextLabel")
     healthLabel.Name                   = "HealthLabel"
     healthLabel.Size                   = UDim2.new(1, 0, 0, 16)
@@ -801,7 +907,6 @@ local combatDamage = CombatTab:Section({Title = "2x Damage", Icon = "swords"})
 
 damageToggleRef = combatDamage:Toggle({
     Title = "2x Damage",
-    Desc  = "Doubles attack damage with chance",
     Value = false,
     Callback = function(state)
         setDoubleDamage(state, false)
@@ -811,14 +916,12 @@ damageToggleRef = combatDamage:Toggle({
 
 combatDamage:Slider({
     Title = "High Damage Chance",
-    Desc  = "Chance to apply 2x damage (0-100)",
     Value = {Min = 0, Max = 100, Default = damageChance},
     Callback = function(v) damageChance = math.floor(v) end,
 })
 
 combatDamage:Input({
     Title = "Toggle Key",
-    Desc  = "Press this key to toggle 2x Damage",
     Placeholder = "e.g. X",
     Value = "X",
     Callback = function(t)
@@ -830,7 +933,6 @@ combatDamage:Input({
 local combatPB = CombatTab:Section({Title = "Auto Perfect Block", Icon = "shield"})
 combatPB:Toggle({
     Title = "Auto Perfect Block",
-    Desc  = "Instantly blocks attacks when enemies swing",
     Value = false,
     Callback = function(state)
         autoPBEnabled = state
@@ -840,13 +942,11 @@ combatPB:Toggle({
 })
 combatPB:Slider({
     Title = "Block Range",
-    Desc  = "Max distance to block (studs)",
     Value = {Min = 5, Max = 25, Default = pbRange},
     Callback = function(v) pbRange = math.floor(v) end,
 })
 combatPB:Input({
     Title = "Toggle Key",
-    Desc  = "Press this key to toggle Auto PB",
     Placeholder = "e.g. C",
     Value = "C",
     Callback = function(t)
@@ -858,7 +958,6 @@ combatPB:Input({
 local combatAB = CombatTab:Section({Title = "Auto Block", Icon = "shield-check"})
 combatAB:Toggle({
     Title = "Legit Auto Block",
-    Desc  = "Only auto blocks while swinging",
     Value = false,
     Callback = function(state)
         setLegitAutoBlock(state)
@@ -867,7 +966,6 @@ combatAB:Toggle({
 })
 combatAB:Toggle({
     Title = "Auto Block OP",
-    Desc  = "Aggressive continuous blocking",
     Value = false,
     Callback = function(state)
         setOPAutoBlock(state)
@@ -878,7 +976,6 @@ combatAB:Toggle({
 local combatHitbox = CombatTab:Section({Title = "Hitbox Expander", Icon = "box"})
 combatHitbox:Toggle({
     Title = "Hitbox Expander",
-    Desc  = "Enlarges hitboxes for easier hits",
     Value = false,
     Callback = function(state)
         hitboxEnabled = state
@@ -888,7 +985,6 @@ combatHitbox:Toggle({
 })
 combatHitbox:Slider({
     Title = "Hitbox Size",
-    Desc  = "Size of expanded hitbox",
     Value = {Min = 8, Max = 18, Default = hitboxSize},
     Callback = function(v)
         hitboxSize = math.floor(v)
@@ -902,10 +998,10 @@ combatHitbox:Slider({
 })
 
 local combatMoves = CombatTab:Section({Title = "Moves", Icon = "zap"})
-combatMoves:Button({ Title = "Aerial", Desc = "Perform Aerial", Icon = "arrow-up", Callback = doAerial })
-combatMoves:Button({ Title = "Kata",   Desc = "Perform Kata",   Icon = "zap",      Callback = doKata })
+combatMoves:Button({ Title = "Aerial", Icon = "arrow-up", Callback = doAerial })
+combatMoves:Button({ Title = "Kata",   Icon = "zap",      Callback = doKata })
 combatMoves:Input({
-    Title = "Aerial Keybind", Desc = "Key to perform Aerial",
+    Title = "Aerial Keybind",
     Placeholder = "e.g. E", Value = "E",
     Callback = function(t)
         local ok, k = pcall(function() return Enum.KeyCode[t:upper()] end)
@@ -913,7 +1009,7 @@ combatMoves:Input({
     end,
 })
 combatMoves:Input({
-    Title = "Kata Keybind", Desc = "Key to perform Kata",
+    Title = "Kata Keybind",
     Placeholder = "e.g. R", Value = "R",
     Callback = function(t)
         local ok, k = pcall(function() return Enum.KeyCode[t:upper()] end)
@@ -921,12 +1017,24 @@ combatMoves:Input({
     end,
 })
 
+-- Toggle Mobile Buttons
+combatMoves:Toggle({
+    Title = "Show Mobile Buttons",
+    Value = false,
+    Callback = function(state)
+        setMobileButtonsEnabled(state)
+        Notify("Mobile Buttons", state and "Enabled" or "Disabled", 2)
+    end,
+})
+
 -- ============================================================
 -- UI : TROLL (Avatar Stealer Dropdown)
 -- ============================================================
-local trollStealer   = TrollTab:Section({Title = "Avatar Stealer", Icon = "user"})
-local selectedPlayer = nil
-local playerLookup   = {}
+local trollStealer      = TrollTab:Section({Title = "Avatar Stealer", Icon = "user"})
+local selectedPlayer    = nil
+local lastUserSelection = nil          -- เก็บ selection ล่าสุดที่ผู้ใช้เลือกจริง
+local playerLookup      = {}
+local inRefresh         = false        -- กัน callback ยิงตอน Refresh แล้วล้างค่า
 
 local function playerLabel(p)
     local dn = p.DisplayName or p.Name
@@ -972,29 +1080,116 @@ local playerDropdown = trollStealer:Dropdown({
                 sel = nil
             end
         end
-        selectedPlayer = (type(sel) == "string") and playerLookup[sel] or nil
+        if type(sel) == "string" then
+            selectedPlayer    = playerLookup[sel]
+            lastUserSelection = selectedPlayer
+        elseif not inRefresh then
+            -- ผู้ใช้กดเลือกเอง (ไม่ใช่ผลจาก Refresh) → เคลียร์จริง
+            selectedPlayer    = nil
+            lastUserSelection = nil
+        end
     end,
 })
 
-local function refreshPlayerDropdown()
-    if not playerDropdown then return end
-    local newValues = buildPlayerList()
-    if selectedPlayer and not selectedPlayer.Parent then
-        selectedPlayer = nil
+-- ============================================================
+-- Player Dropdown Refresh (debounced + change-detected + selection-safe)
+-- ============================================================
+local lastSignature    = ""
+local refreshScheduled = false
+local refreshing       = false
+local pendingRefresh   = false
+local doRefreshNow
+
+-- signature: userid + displayname → จับ DisplayName เปลี่ยนได้ด้วย
+local function buildSignature()
+    local entries = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer then
+            table.insert(entries, tostring(p.UserId) .. ":" .. (p.DisplayName or p.Name))
+        end
     end
-    pcall(function() playerDropdown:Refresh(newValues) end)
+    table.sort(entries)
+    return table.concat(entries, "|")
 end
 
-Players.PlayerAdded:Connect(function()
-    task.wait(0.5)
-    refreshPlayerDropdown()
+local function scheduleRefresh()
+    if refreshScheduled then return end
+    refreshScheduled = true
+    task.delay(1, function()          -- debounce 1 วิ: batching คนเข้า/ออกพร้อมกัน
+        refreshScheduled = false
+        doRefreshNow()
+    end)
+end
+
+doRefreshNow = function()
+    if not playerDropdown then return end
+    if refreshing then
+        pendingRefresh = true
+        return
+    end
+
+    local sig = buildSignature()
+    if sig == lastSignature then return end   -- ไม่เปลี่ยน → ไม่ต้อง rebuild
+    lastSignature = sig
+
+    refreshing = true
+    inRefresh  = true
+
+    local ok = pcall(function()
+        playerDropdown:Refresh(buildPlayerList())
+    end)
+
+    -- คืน selection ถ้ายังอยู่จริง
+    if lastUserSelection and lastUserSelection.Parent then
+        selectedPlayer = lastUserSelection
+    else
+        selectedPlayer    = nil
+        lastUserSelection = nil
+    end
+
+    -- เปิด inRefresh ไว้ 0.3 วิ เพื่อกลืน callback async ที่อาจยิงมาทีหลัง
+    task.delay(0.3, function()
+        inRefresh  = false
+        refreshing = false
+        if pendingRefresh then
+            pendingRefresh = false
+            scheduleRefresh()
+        end
+    end)
+
+    if not ok then
+        task.delay(2, scheduleRefresh)     -- ถ้า Refresh พัง ค่อยลองใหม่
+    end
+end
+
+lastSignature = buildSignature()
+
+Players.PlayerAdded:Connect(function(p)
+    -- รอ Character / DisplayName settle ก่อน
+    task.delay(0.75, scheduleRefresh)
+    p.Changed:Connect(function(prop)
+        if prop == "DisplayName" or prop == "Name" then
+            scheduleRefresh()
+        end
+    end)
 end)
 
 Players.PlayerRemoving:Connect(function(p)
-    if selectedPlayer == p then selectedPlayer = nil end
-    task.wait(0.2)
-    refreshPlayerDropdown()
+    if selectedPlayer == p then
+        selectedPlayer    = nil
+        lastUserSelection = nil
+    end
+    scheduleRefresh()
 end)
+
+trollStealer:Button({
+    Title = "Refresh Players",
+    Icon  = "refresh-cw",
+    Callback = function()
+        lastSignature = ""
+        doRefreshNow()
+    end,
+})
 
 trollStealer:Button({
     Title = "Steal Avatar",
@@ -1011,7 +1206,7 @@ trollStealer:Button({
         end
         stealAvatar(selectedPlayer)
         Notify("Outfit Stealer",
-            "Copying" .. selectedPlayer.Name .. "...", 2)
+            "Copying " .. selectedPlayer.Name .. "...", 2)
     end,
 })
 
@@ -1021,25 +1216,18 @@ trollStealer:Button({
 local opAura = OPTab:Section({Title = "Blatant Kill Aura", Icon = "target"})
 opAura:Toggle({
     Title = "Blatant Aura",
-    Desc  = "Rapidly attacks all enemies in range",
     Value = false,
     Callback = function(s) killAuraEnabled = s end,
 })
 opAura:Slider({
     Title = "Speed",
-    Desc  = "Delay between attacks (seconds)",
     Value = {Min = 0.01, Max = 1.5, Default = killAuraInterval},
     Callback = function(v) killAuraInterval = v end,
-})
-opAura:Paragraph({
-    Title = "Note",
-    Desc  = "Disable Auto Block OP so kill aura works properly",
 })
 
 local opGod = OPTab:Section({Title = "GodMod", Icon = "shield"})
 godModToggleRef = opGod:Toggle({
     Title = "GodMod",
-    Desc  = "AOE attack that hits all players for 4 seconds",
     Value = false,
     Callback = function(s)
         godModEnabled = s
@@ -1054,7 +1242,6 @@ for _, p in ipairs(Players:GetPlayers()) do
 end
 opWL:Dropdown({
     Title = "Ignore Players",
-    Desc  = "These players won't be targeted by aura/godmod",
     Values = playerNames,
     Multi = true,
     Callback = function(selected)
@@ -1151,14 +1338,12 @@ espSection:Slider({
 -- ============================================================
 SettingsTab:Section({Title = "Ping Display", Icon = "activity"}):Toggle({
     Title = "Show Ping",
-    Desc  = "Shows a live ping counter",
     Value = false,
     Callback = setPingEnabled,
 })
 
 SettingsTab:Section({Title = "Discord", Icon = "message-circle"}):Button({
     Title = "Copy Discord Link",
-    Desc  = "Copy the invite link to clipboard",
     Icon  = "copy",
     Callback = function()
         pcall(function() setclipboard("https://discord.gg/Tzrupyysc") end)
@@ -1168,7 +1353,6 @@ SettingsTab:Section({Title = "Discord", Icon = "message-circle"}):Button({
 
 SettingsTab:Section({Title = "Config", Icon = "save"}):Button({
     Title = "Save Config",
-    Desc  = "Save current configuration",
     Icon  = "save",
     Callback = function()
         Notify("Config", "Configuration Saved Successfully!", 2)
