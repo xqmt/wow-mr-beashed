@@ -1647,6 +1647,8 @@ local presets = {
     { Title = "Headshot 2",   Url = "https://i.postimg.cc/wBt93v8c/c06332b424e199f80eca0dea00210e01.jpg" },
     { Title = "Mogged 1",   Url = "https://i.postimg.cc/PqLdNxsZ/bd78cbfb754742aca6e5dada1109495a.jpg" },
     { Title = "Mogged 2",   Url = "https://i.postimg.cc/nLsnMzbG/0d390827e5526cf1cbd9c106a48de409.jpg" },
+    { Title = "Brutal",   Url = "https://i.postimg.cc/nLsnMzbG/0d390827e5526cf1cbd9c106a48de409.jpg" },
+    { Title = "linkmon99",   Url = "https://i.postimg.cc/d3cC4pjQ/c0ffb8f236cce788134e9d76c4bb4524.jpg" },
 }
 
 -- ============================================================
