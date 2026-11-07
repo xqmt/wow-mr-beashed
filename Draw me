@@ -2,7 +2,7 @@
 local WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/nebx3/cred5t4332432424/refs/heads/main/credibility_muppet61211.lua"))()
 local Window = WindUI:CreateWindow({
     Title = "Ashu Hub",
-    Icon = "brush",
+    Icon = "rbxassetid://82367817676382",
     IconThemed = true,
     Folder = "Credibility",
     Size = UDim2.fromOffset(500, 400),
@@ -17,6 +17,23 @@ local Window = WindUI:CreateWindow({
     SideBarWidth = 200,
     ScrollBarEnabled = true
 })
+
+Window:EditOpenButton({
+    Title = "Open Main UI",
+    Icon = "rbxassetid://82367817676382",
+    CornerRadius = UDim.new(0,16),
+    StrokeThickness = 1.5,
+    Color = ColorSequence.new(
+        Color3.fromHex("FFFFFF"),
+        Color3.fromHex("000000")
+    ),
+    OnlyMobile = false,
+    Enabled = true,
+    Draggable = true,
+})
+
+Window:Tag({ Title = "Draw me", Color = "101010" })
+
 local Tab = Window:Tab({  
     Title = "draw",  
     Icon = "pen-tool",  
