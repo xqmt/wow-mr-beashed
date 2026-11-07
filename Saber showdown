@@ -122,7 +122,7 @@ end
 -- Window & Tabs
 -- ============================================================
 local Window = WindUI:CreateWindow({
-    Title  = "xplicit.xyz",
+    Title  = "Ashu Hub",
     Icon   = "rbxassetid://82367817676382",
     Theme  = "Custom",
     ToggleKey = Enum.KeyCode.RightShift,
