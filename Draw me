@@ -1,27 +1,90 @@
---by kanl
-local WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/nebx3/cred5t4332432424/refs/heads/main/credibility_muppet61211.lua"))()
+--!nocheck
+local RunService       = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+-- [[ WindUI Loader ]]
+local cloneref = (cloneref or clonereference or function(i) return i end)
+local WindUI
+do
+    local ok, result = pcall(function() return require("./src/Init") end)
+    if ok then
+        WindUI = result
+    else
+        if RunService:IsStudio() or not writefile then
+            WindUI = require(ReplicatedStorage:WaitForChild("WindUI"):WaitForChild("Init"))
+        else
+            WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
+        end
+    end
+end
+
+-- [[ Custom Theme (Ashu Hub style) ]]
+WindUI:AddTheme({
+    Name = "Custom",
+    Accent = Color3.fromHex("#18181b"),
+    Background = Color3.fromHex("#000000"),
+    BackgroundTransparency = 0,
+    Outline = Color3.fromHex("#FFFFFF"),
+    Text = Color3.fromHex("#FFFFFF"),
+    Placeholder = Color3.fromHex("#7a7a7a"),
+    Button = Color3.fromHex("#52525b"),
+    Icon = Color3.fromHex("#FFFFFF"),
+    Hover = Color3.fromHex("#FFFFFF"),
+    WindowBackground = Color3.fromHex("000000"),
+    WindowShadow = Color3.fromHex("000000"),
+    DialogBackground = Color3.fromHex("#101010"),
+    DialogBackgroundTransparency = 0,
+    DialogTitle = Color3.fromHex("#FFFFFF"),
+    DialogContent = Color3.fromHex("#FFFFFF"),
+    DialogIcon = Color3.fromHex("#a1a1aa"),
+    WindowTopbarButtonIcon = Color3.fromHex("FFFFFF"),
+    WindowTopbarTitle = Color3.fromHex("FFFFFF"),
+    WindowTopbarAuthor = Color3.fromHex("FFFFFF"),
+    WindowTopbarIcon = Color3.fromHex("FFFFFF"),
+    TabBackground = Color3.fromHex("#FFFFFF"),
+    TabTitle = Color3.fromHex("#FFFFFF"),
+    TabIcon = Color3.fromHex("FFFFFF"),
+    ElementBackground = Color3.fromHex("#101010"),
+    ElementTitle = Color3.fromHex("#FFFFFF"),
+    ElementDesc = Color3.fromHex("#FFFFFF"),
+    ElementIcon = Color3.fromHex("#a1a1aa"),
+    PopupBackground = Color3.fromHex("#000000"),
+    PopupBackgroundTransparency = 0.5,
+    PopupTitle = Color3.fromHex("#FFFFFF"),
+    PopupContent = Color3.fromHex("#FFFFFF"),
+    PopupIcon = Color3.fromHex("#FFFFFF"),
+    Toggle = Color3.fromHex("#52525b"),
+    ToggleBar = Color3.fromHex("#FFFFFF"),
+    Checkbox = Color3.fromHex("#52525b"),
+    CheckboxIcon = Color3.fromHex("#FFFFFF"),
+    Slider = Color3.fromHex("#FFFFFF"),
+    SliderThumb = Color3.fromHex("#FFFFFF"),
+})
+
+local function Notify(title, desc, duration)
+    duration = duration or 3
+    local ok = pcall(function()
+        WindUI:Notify({Title = title, Content = desc, Duration = duration})
+    end)
+    if not ok then
+        pcall(function()
+            WindUI:Notification({Title = title, Content = desc, Duration = duration})
+        end)
+    end
+end
+
+-- [[ Window ]]
 local Window = WindUI:CreateWindow({
     Title = "Ashu Hub",
     Icon = "rbxassetid://82367817676382",
-    IconThemed = true,
-    Folder = "Credibility",
-    Size = UDim2.fromOffset(500, 400),
-    Transparent = true,
-    Theme = "Light",
-    Background = nil,
-    User = {
-        Enabled = true,
-        Callback = function() end,
-        Anonymous = false
-    },
-    SideBarWidth = 200,
-    ScrollBarEnabled = true
+    Theme = "Custom",
+    ToggleKey = Enum.KeyCode.RightShift,
 })
 
 Window:EditOpenButton({
     Title = "Open Main UI",
     Icon = "rbxassetid://82367817676382",
-    CornerRadius = UDim.new(0,16),
+    CornerRadius = UDim.new(0, 16),
     StrokeThickness = 1.5,
     Color = ColorSequence.new(
         Color3.fromHex("FFFFFF"),
@@ -32,13 +95,14 @@ Window:EditOpenButton({
     Draggable = true,
 })
 
-Window:Tag({ Title = "Draw me", Color = "101010" })
+Window:Tag({ Title = "Draw Me", Color = "ElementBackground" })
 
-local Tab = Window:Tab({  
-    Title = "draw",  
-    Icon = "pen-tool",  
-    Locked = false,
-})
+local DrawTab    = Window:Tab({Title = "Draw",    Icon = "solar:pen-bold"})
+local PresetsTab = Window:Tab({Title = "Presets", Icon = "solar:gallery-bold"})
+
+-- ============================================================
+-- IMAGE DECODING MODULES (bundled)
+-- ============================================================
 local modules = {}
 local cache = {}
 local function drequire(name)
@@ -1025,7 +1089,6 @@ modules["modules.standard.jpeg"] = function()
 				ImageInfo.Blocks[p][i] = Block
 			end
 		end
-		print("Size:", ImageInfo.X, ImageInfo.Y, ComponantsInFrame)
 	end
 	function IndexHuffmanTree(Tree, Buff)
 		local Current = Tree.Root
@@ -1132,7 +1195,6 @@ modules["modules.standard.jpeg"] = function()
 				local ExpextedMarker = 0xFF00 + RSTnMin + (((MCU - RestartInterval) // RestartInterval) % 8)
 				local Marker = Buff:ReadBytes(2)
 				if (Marker ~= ExpextedMarker) then
-					print("Restart Marker error, got marker", Marker, "expected", ExpextedMarker)
 					return
 				end
 				EndOfBandRun = 0
@@ -1237,7 +1299,6 @@ modules["modules.standard.jpeg"] = function()
 				local ExpextedMarker = 0xFF00 + RSTnMin + (((MCU - RestartInterval) // RestartInterval) % 8)
 				local Marker = Buff:ReadBytes(2)
 				if (Marker ~= ExpextedMarker) then
-					print("Restart Marker error, got marker", Marker, "expected", ExpextedMarker)
 					return
 				end
 				EndOfBandRun = 0
@@ -1343,7 +1404,7 @@ modules["modules.standard.jpeg"] = function()
 	end
 	function DecodeJpeg(BString)
 		local Buff = Buffer.New(BString)
-		if (Buff:ReadBytes(2) ~= 0xFF00 + SOI) then print("inavlid jpg file") return end
+		if (Buff:ReadBytes(2) ~= 0xFF00 + SOI) then return end
 		local ImageInfo = {
 			X = 0, Y = 0, Pixels = {},
 			QuantizationTables = {{}, {}, {}, {}},
@@ -1494,42 +1555,46 @@ end
 local function draw_from_url(url)
 	if not url or url == "" then
 		log("url is empty", true)
+		Notify("Draw", "URL is empty", 2)
 		return
 	end
 
 	local targetImage = canvas_mod.get_canvas()
 	if not targetImage then
 		log("canvas not found", true)
+		Notify("Draw", "Canvas not found", 3)
 		return
 	end
 
-	log("fetching image...")
+	Notify("Draw", "Fetching image...", 2)
 	local success, result = pcall(function() return http_get(url) end)
 	if not success or not result then
 		log("http request failed", true)
+		Notify("Draw", "HTTP request failed", 3)
 		return
 	end
 
 	local isValid, fileType = validate_image_data(result)
 	if not isValid then
 		log("invalid image data: " .. tostring(fileType), true)
+		Notify("Draw", "Invalid image data", 3)
 		return
 	end
 
 	if fileType ~= "PNG" and fileType ~= "JPG" then
 		log("unsupported format: " .. tostring(fileType), true)
+		Notify("Draw", "Unsupported format", 3)
 		return
 	end
 
 	local canvasSize = targetImage.Size
 
 	setthreadidentity(8)
-	log("parsing " .. fileType .. "...")
 
 	local image = image_loader.load(result, fileType)
 	local srcWidth, srcHeight = image.Width, image.Height
 
-	log(string.format("resizing (%dx%d) -> canvas (%dx%d)", srcWidth, srcHeight, canvasSize.X, canvasSize.Y))
+	Notify("Draw", string.format("Scaling %dx%d → %dx%d", srcWidth, srcHeight, canvasSize.X, canvasSize.Y), 2)
 
 	local dstWidth  = canvasSize.X
 	local dstHeight = canvasSize.Y
@@ -1537,8 +1602,6 @@ local function draw_from_url(url)
 	local pixelBuffer = buffer.create(bufferSize)
 	local ratioX = srcWidth / dstWidth
 	local ratioY = srcHeight / dstHeight
-
-	log("decoding and scaling pixels...")
 
 	local pointer = 0
 	for y = 1, dstHeight do
@@ -1557,77 +1620,90 @@ local function draw_from_url(url)
 		end
 	end
 
-	log("writing to canvas...")
 	local writeSuccess, writeErr = pcall(function()
 		targetImage:WritePixelsBuffer(Vector2.zero, canvasSize, pixelBuffer)
 	end)
 
 	if not writeSuccess then
 		log("write error: " .. tostring(writeErr), true)
+		Notify("Draw", "Write error", 3)
 	else
 		log("done.")
+		Notify("Draw", "Image drawn successfully!", 3)
 	end
 end
 
+-- ============================================================
+-- State
+-- ============================================================
 local pendingUrl = ""
-
-local PresetsTab = Window:Tab({
-    Title = "presets",
-    Icon = "images",
-    Locked = false,
-})
-
 local presets = {
     { Title = "Funny 1", Url = "https://i.pinimg.com/736x/80/a6/df/80a6dffab22056845659433e26fdf849.jpg" },
     { Title = "Funny 2", Url = "https://i.pinimg.com/736x/73/d0/cc/73d0cc55610480c7973d7eec2488546d.jpg" },
     { Title = "Funny 3", Url = "https://i.pinimg.com/736x/c9/b6/6d/c9b66dc9f604fb28007129ddd8cfc5c7.jpg" },
-    { Title = "promo", Url = "https://i.postimg.cc/QdJJM7Qt/JOIN-CRED.png" },
+    { Title = "promo",   Url = "https://i.postimg.cc/QdJJM7Qt/JOIN-CRED.png" },
 }
 
+-- ============================================================
+-- UI : DRAW TAB
+-- ============================================================
+local urlSection = DrawTab:Section({Title = "Image URL", Icon = "solar:link-bold"})
+
+urlSection:Input({
+    Title = "Image URL",
+    Value = "",
+    Placeholder = "https://example.com/image.png",
+    Callback = function(input)
+        pendingUrl = input
+    end,
+})
+
+urlSection:Button({
+    Title = "Upload",
+    Icon = "solar:upload-bold",
+    Callback = function()
+        task.spawn(function()
+            draw_from_url(pendingUrl)
+        end)
+    end,
+})
+
+local infoSection = DrawTab:Section({Title = "Info", Icon = "solar:info-circle-bold"})
+
+infoSection:Paragraph({
+    Title = "Supported Formats",
+    Desc = "Image types — .jpg, .jpeg, .png",
+    Image = "solar:gallery-bold",
+    Color = "Green",
+    ImageSize = 36,
+    ThumbnailSize = 80,
+})
+
+infoSection:Paragraph({
+    Title = "Warning",
+    Desc = "Don't upload any 18+ or NSFW images to the canvas. That includes all adult content. Doing so can get you banned.",
+    Image = "solar:danger-triangle-bold",
+    Color = "Red",
+    ImageSize = 40,
+    ThumbnailSize = 120,
+})
+
+-- ============================================================
+-- UI : PRESETS TAB
+-- ============================================================
+local presetSection = PresetsTab:Section({Title = "Quick Presets", Icon = "solar:gallery-bold"})
+
 for _, preset in ipairs(presets) do
-    PresetsTab:Button({
+    presetSection:Button({
         Title = preset.Title,
+        Icon  = "solar:image-bold",
         Callback = function()
             pendingUrl = preset.Url
             task.spawn(function()
                 draw_from_url(preset.Url)
             end)
-        end
+        end,
     })
 end
 
-
-
-Tab:Input({
-	Title = "image url",
-	Value = "",
-	Placeholder = "https://example.com/image.png",
-	Callback = function(input)
-		pendingUrl = input
-	end
-})
-
-Tab:Button({
-	Title = "Upload",
-	Callback = function()
-		task.spawn(function()
-			draw_from_url(pendingUrl)
-		end)
-	end
-})
-Tab:Paragraph({
-    Title = "images",
-    Desc = "Image types - .jpg, .jpeg, .png, .webp",
-    Image = "message-square-quote",
-    Color = "Green",
-    ImageSize = 36, 
-    ThumbnailSize = 80
-})
-Tab:Paragraph({
-    Title = "warning",
-    Desc = "Don’t upload any 18+ or NSFW images to the canvas. That includes all adult content. Doing so can get you banned.",
-    Image = "triangle-alert",
-    Color = "Red",
-    ImageSize = 40, 
-    ThumbnailSize = 120
-})
+Notify("Credibility", "All features loaded!", 5)
