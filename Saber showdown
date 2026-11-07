@@ -149,10 +149,10 @@ Window:EditOpenButton({
 
 Window:Tag({ Title = "Saber Showdown", Color = "ElementBackground" })
 
-local CombatTab    = Window:Tab({Title = "Combat",   Icon = "solar:home-2-bold"})
-local TrollTab     = Window:Tab({Title = "Troll",    Icon = "solar:user-circle-bold"})
-local OPTab        = Window:Tab({Title = "OP",       Icon = "solar:fire-bold"})
-local SettingsTab  = Window:Tab({Title = "Settings", Icon = "solar:hamburger-menu-broken"})
+local CombatTab    = Window:Tab({Title = "Main",   Icon = "solar:home-2-bold"})
+local TrollTab     = Window:Tab({Title = "Avatar Steal",    Icon = "solar:user-circle-bold"})
+local OPTab        = Window:Tab({Title = "Misc",       Icon = "solar:fire-bold"})
+local SettingsTab  = Window:Tab({Title = "Settings", Icon = "solar:settings-bold"})
 
 -- ============================================================
 -- Keybind State
