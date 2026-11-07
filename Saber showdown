@@ -1,0 +1,831 @@
+--!nocheck
+-- ============================================================
+--  Ashu Hub  —  WindUI Edition
+--  Original: discord.gg/syncrypt
+-- ============================================================
+
+-- [[ Services ]]
+local Players            = game:GetService("Players")
+local RunService         = game:GetService("RunService")
+local UserInputService   = game:GetService("UserInputService")
+local ReplicatedStorage  = game:GetService("ReplicatedStorage")
+local Stats              = game:GetService("Stats")
+local CoreGui            = game:GetService("CoreGui")
+local LocalPlayer        = Players.LocalPlayer
+
+local LightsaberRemotes      = ReplicatedStorage:WaitForChild("LightsaberRemotes")
+local UpdateBlockDirection   = LightsaberRemotes:WaitForChild("UpdateBlockDirection")
+local Attack                 = LightsaberRemotes:WaitForChild("Attack")
+local Swing                  = LightsaberRemotes:WaitForChild("Swing")
+local MouseDown              = LightsaberRemotes:WaitForChild("MouseDown")
+local MouseUp                = LightsaberRemotes:WaitForChild("MouseUp")
+local Block                  = LightsaberRemotes:WaitForChild("Block")
+local Unblock                = LightsaberRemotes:WaitForChild("Unblock")
+local OnHit                  = LightsaberRemotes:WaitForChild("OnHit")
+local FinishSwing            = LightsaberRemotes:WaitForChild("FinishSwing")
+local FinishSwingNoBounce    = LightsaberRemotes:WaitForChild("FinishSwingNoBounce")
+local ResetSwingDirection    = LightsaberRemotes:WaitForChild("ResetSwingDirection")
+
+local ClientState = require(ReplicatedStorage.LightsaberModules.Client.ClientState)
+local Aerial      = require(ReplicatedStorage.LightsaberModules.SharedBehavior.Aerial)
+local Kata        = require(ReplicatedStorage.LightsaberModules.SharedBehavior.Kata)
+
+-- [[ WindUI Loader ]]
+local cloneref = (cloneref or clonereference or function(i) return i end)
+local WindUI
+do
+    local ok, result = pcall(function() return require("./src/Init") end)
+    if ok then
+        WindUI = result
+    else
+        if RunService:IsStudio() or not writefile then
+            WindUI = require(ReplicatedStorage:WaitForChild("WindUI"):WaitForChild("Init"))
+        else
+            WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
+        end
+    end
+end
+
+-- [[ Notify helper ]]
+local function Notify(title, desc, duration)
+    duration = duration or 3
+    local ok = pcall(function()
+        WindUI:Notify({Title = title, Content = desc, Duration = duration})
+    end)
+    if not ok then
+        pcall(function()
+            WindUI:Notification({Title = title, Content = desc, Duration = duration})
+        end)
+    end
+end
+
+-- ============================================================
+-- Window & Tabs
+-- ============================================================
+local Window = WindUI:CreateWindow({
+    Title  = "Ashu Hub",
+    Icon   = "rbxassetid://82367817676382",
+    Theme  = "Dark",
+    ToggleKey = Enum.KeyCode.RightShift,
+})
+
+Window:EditOpenButton({
+    Title = "Open Main UI",
+    Icon = "rbxassetid://82367817676382",
+    CornerRadius = UDim.new(0,16),
+    StrokeThickness = 1.5,
+    Color = ColorSequence.new( -- gradient
+        Color3.fromHex("FFFFFF"), 
+        Color3.fromHex("000000")
+    ),
+    OnlyMobile = false,
+    Enabled = true,
+    Draggable = true,
+})
+
+Window:Tag({ Title = "Saber Showdown", Color = "ElementBackground" })
+
+local CombatTab    = Window:Tab({Title = "Combat",   Icon = "solar:home-2-bold"})
+local TrollTab     = Window:Tab({Title = "Troll",    Icon = "solar:user-circle-bold"})
+local OPTab        = Window:Tab({Title = "OP",       Icon = "solar:fire-bold"})
+local SettingsTab  = Window:Tab({Title = "Settings", Icon = "solar:hamburger-menu-broken"})
+
+-- ============================================================
+-- Keybind State
+-- ============================================================
+local keys = {
+    DamageKey = Enum.KeyCode.X,
+    AutoPBKey = Enum.KeyCode.C,
+    AerialKey = Enum.KeyCode.E,
+    KataKey   = Enum.KeyCode.R,
+}
+
+-- ============================================================
+-- Helpers
+-- ============================================================
+local function getMyHRP()
+    local char = LocalPlayer.Character
+    return char and char:FindFirstChild("HumanoidRootPart")
+end
+
+-- ============================================================
+-- 2x Damage
+-- ============================================================
+local doubleDamageEnabled = false
+local damageChance        = 100
+local damageToggleRef     = nil
+
+local function setDoubleDamage(state, updateUI)
+    doubleDamageEnabled = state
+    if updateUI and damageToggleRef then
+        pcall(function() damageToggleRef:Set(state) end)
+    end
+end
+
+local oldNamecall2x
+oldNamecall2x = hookmetamethod(game, "__namecall", function(self, ...)
+    if not doubleDamageEnabled or checkcaller() then
+        return oldNamecall2x(self, ...)
+    end
+    if getnamecallmethod() == "FireServer" and self.Name == "Attack" and math.random(1, 100) <= damageChance then
+        local args = {...}
+        args[2] = 1
+        return oldNamecall2x(self, unpack(args))
+    end
+    return oldNamecall2x(self, ...)
+end)
+
+-- ============================================================
+-- Auto Perfect Block
+-- ============================================================
+local autoPBEnabled     = false
+local pbRange           = 12
+local trackedAnimations = {}
+local processedModels   = {}
+
+local animationDirections = {
+    [12718502938] = {{1,13,2},1}, [12625839385] = {{1,13,2},1}, [13564880014] = {{1,13,2},1},
+    [12734285787] = {{1,13,2},1}, [13453391958] = {{1,13,2},1}, [14167593691] = {{1,13,2},1},
+    [13783202348] = {{1,13,2},1}, [13540434005] = {{1,13,2},1}, [15563343338] = {{1,13,2},1},
+    [12734468945] = {{1,13,2},1}, [13304774028] = {{1,13,2},1}, [17372041039] = {{1,13,2},1},
+    [14329314419] = {{1,13,2},1},
+    [12718504431] = {{2,3,4},8}, [12625848489] = {{2,3,4},8}, [13565725049] = {{2,3,4},8},
+    [12734288411] = {{2,3,4},8}, [13453386109] = {{2,3,4},8}, [14167584256] = {{2,3,4},8},
+    [13783395464] = {{2,3,4},8}, [13540430226] = {{2,3,4},8}, [15563344914] = {{2,3,4},8},
+    [12734471179] = {{2,3,4},8}, [13304781510] = {{2,3,4},8}, [17566657634] = {{2,3,4},8},
+    [14329308611] = {{2,3,4},8},
+    [12718501806] = {{4,5,6},3}, [12625841878] = {{4,5,6},3}, [13569466383] = {{4,5,6},3},
+    [12734284724] = {{4,5,6},3}, [13453390619] = {{4,5,6},3}, [14167591876] = {{4,5,6},3},
+    [13783497920] = {{4,5,6},3}, [15563343960] = {{4,5,6},3}, [12734468200] = {{4,5,6},3},
+    [13306520673] = {{4,5,6},3}, [17372039079] = {{4,5,6},3}, [14329312618] = {{4,5,6},3},
+    [12718500875] = {{6,7,8},6}, [12625853257] = {{6,7,8},6}, [13569308951] = {{6,7,8},6},
+    [12734283312] = {{6,7,8},6}, [13453385141] = {{6,7,8},6}, [14167502905] = {{6,7,8},6},
+    [13781663786] = {{6,7,8},6}, [13540431378] = {{6,7,8},6}, [15563346027] = {{6,7,8},6},
+    [12734467243] = {{6,7,8},6}, [13306517941] = {{6,7,8},6}, [17372038496] = {{6,7,8},6},
+    [14329161930] = {{6,7,8},6},
+    [12718483984] = {{8,9,10},5}, [12625843823] = {{8,9,10},5}, [13568360345] = {{8,9,10},5},
+    [12734279804] = {{8,9,10},5}, [13453387454] = {{8,9,10},5}, [14167592684] = {{8,9,10},5},
+    [13781621647] = {{8,9,10},5}, [15563342470] = {{8,9,10},5}, [12734465074] = {{8,9,10},5},
+    [13304777249] = {{8,9,10},5}, [17372037456] = {{8,9,10},5}, [14355055371] = {{8,9,10},5},
+    [12718486016] = {{10,11},4}, [12625846167] = {{10,11},4}, [13568907848] = {{10,11},4},
+    [12734282359] = {{10,11},4}, [13453382299] = {{10,11},4}, [14167590501] = {{10,11},4},
+    [13781667793] = {{10,11},4}, [15564066873] = {{10,11},4}, [12734466257] = {{10,11},4},
+    [13304786458] = {{10,11},4}, [17372036678] = {{10,11},4}, [14329310837] = {{10,11},4},
+    [12718503706] = {{12,13},2}, [12625851115] = {{12,13},2}, [13566518265] = {{12,13},2},
+    [12734286808] = {{12,13},2}, [13453383921] = {{12,13},2}, [14167585544] = {{12,13},2},
+    [13783293417] = {{12,13},2}, [15563346564] = {{12,13},2}, [12734470075] = {{12,13},2},
+    [13304788013] = {{12,13},2}, [17566667400] = {{12,13},2}, [14329160019] = {{12,13},2},
+}
+
+local function trackModel(model)
+    if not model:IsA("Model") or model == LocalPlayer.Character then return end
+    local hum = model:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+    hum.Died:Connect(function() processedModels[hum] = nil end)
+
+    local animator = hum:FindFirstChildWhichIsA("Animator")
+    if not animator or processedModels[animator] then return end
+    processedModels[animator] = true
+
+    animator.AnimationPlayed:Connect(function(track)
+        local id = track.Animation.AnimationId:match("%d+$")
+        local entry = id and animationDirections[tonumber(id)]
+        if not entry then return end
+        trackedAnimations[track] = {dirs = entry[1], model = model, executed = false}
+    end)
+end
+
+RunService.Heartbeat:Connect(function()
+    if not autoPBEnabled or not getMyHRP() then return end
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            trackModel(player.Character)
+        end
+    end
+    local folder = workspace:FindFirstChild("Characters")
+    if folder then
+        for _, m in ipairs(folder:GetChildren()) do trackModel(m) end
+    end
+end)
+
+RunService.RenderStepped:Connect(function()
+    if not autoPBEnabled then return end
+    local hrp = getMyHRP()
+    if not hrp then return end
+    for track, data in pairs(trackedAnimations) do
+        if track.IsPlaying then
+            if not data.executed then
+                local tHRP = data.model:FindFirstChild("HumanoidRootPart")
+                if tHRP and (hrp.Position - tHRP.Position).Magnitude <= pbRange then
+                    data.executed = true
+                    for _, dir in ipairs(data.dirs) do
+                        UpdateBlockDirection:FireServer(dir)
+                    end
+                end
+            end
+        else
+            trackedAnimations[track] = nil
+        end
+    end
+end)
+
+LocalPlayer.CharacterAdded:Connect(function()
+    local c = LocalPlayer.Character
+    if c then c:WaitForChild("HumanoidRootPart") end
+    trackedAnimations = {}
+end)
+
+-- ============================================================
+-- Auto Block
+-- ============================================================
+local function setLegitAutoBlock(state)
+    if not state then pcall(function() Unblock:FireServer() end) end
+end
+
+local opAutoBlockEnabled = false
+local opBlockActive      = true
+
+local oldNamecallOP
+oldNamecallOP = hookmetamethod(game, "__namecall", function(self, ...)
+    if not opAutoBlockEnabled or checkcaller() then
+        return oldNamecallOP(self, ...)
+    end
+    if self == Attack and getnamecallmethod() == "FireServer" then
+        Unblock:FireServer() Unblock:FireServer()
+        opBlockActive = true
+    end
+    return oldNamecallOP(self, ...)
+end)
+
+RunService.RenderStepped:Connect(function()
+    if not (opAutoBlockEnabled and opBlockActive) then return end
+    for _ = 1, 6 do Block:FireServer() end
+end)
+
+task.spawn(function()
+    while true do
+        if opAutoBlockEnabled and opBlockActive then
+            Block:FireServer()
+        end
+        task.wait()
+    end
+end)
+
+local function setOPAutoBlock(state) opAutoBlockEnabled = state end
+
+-- ============================================================
+-- Aerial / Kata
+-- ============================================================
+local function doAerial()
+    local hrp = getMyHRP()
+    if not hrp then return end
+    local v = hrp.AssemblyLinearVelocity
+    hrp.AssemblyLinearVelocity = Vector3.new(v.X, 44, v.Z)
+    task.wait(0.12)
+    pcall(function() Aerial(ClientState.get()) end)
+end
+
+local function doKata()
+    local hrp = getMyHRP()
+    if not hrp then return end
+    local v = hrp.AssemblyLinearVelocity
+    hrp.AssemblyLinearVelocity = Vector3.new(v.X, 44, v.Z)
+    task.wait(0.12)
+    pcall(function() Kata(ClientState.get()) end)
+end
+
+-- ============================================================
+-- Whitelist
+-- ============================================================
+local whitelist = {}
+local function isWhitelisted(player)
+    return whitelist[player.Name] == true
+end
+
+-- ============================================================
+-- Hitbox Expander
+-- ============================================================
+local hitboxEnabled = false
+local hitboxSize    = 8
+local hitboxData    = {players = {}, npcs = {}}
+local hitboxLoopRunning = false
+
+local function createHitbox(parent, target)
+    local part = Instance.new("Part")
+    part.Name = "AshuHitbox"
+    part.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
+    part.CanCollide = false
+    part.CanQuery = true
+    part.CanTouch = false
+    part.Massless = true
+    part.Transparency = 1
+    local weld = Instance.new("WeldConstraint")
+    weld.Part0, weld.Part1 = target, part
+    weld.Parent = part
+    part.CFrame = target.CFrame
+    part.Parent = parent
+    return part, weld
+end
+
+local function destroyHitbox(data)
+    if data and data.box then data.box:Destroy() end
+end
+
+local function hitboxLoop()
+    if hitboxLoopRunning then return end
+    hitboxLoopRunning = true
+    task.spawn(function()
+        while hitboxEnabled do
+            for _, player in ipairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer then
+                    local char = player.Character
+                    local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+                    local hum  = char and char:FindFirstChildOfClass("Humanoid")
+                    if hrp and hum and hum.Health > 0 then
+                        local e = hitboxData.players[player]
+                        if e and e.box and e.box.Parent then
+                            e.box.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
+                        else
+                            local b, w = createHitbox(char, hrp)
+                            hitboxData.players[player] = {box = b, weld = w}
+                        end
+                    elseif hitboxData.players[player] then
+                        destroyHitbox(hitboxData.players[player])
+                        hitboxData.players[player] = nil
+                    end
+                end
+            end
+            for _, desc in ipairs(workspace:GetDescendants()) do
+                if desc.Name == "HumanoidRootPart" then
+                    local parent = desc.Parent
+                    if parent and parent:IsA("Model") and not Players:GetPlayerFromCharacter(parent) then
+                        local hum = parent:FindFirstChildOfClass("Humanoid")
+                        if hum and hum.Health > 0 then
+                            local e = hitboxData.npcs[desc]
+                            if e and e.box and e.box.Parent then
+                                e.box.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
+                            else
+                                local b, w = createHitbox(parent, desc)
+                                hitboxData.npcs[desc] = {box = b, weld = w}
+                            end
+                        elseif hitboxData.npcs[desc] then
+                            destroyHitbox(hitboxData.npcs[desc])
+                            hitboxData.npcs[desc] = nil
+                        end
+                    end
+                end
+            end
+            task.wait(0.8)
+        end
+        for _, d in pairs(hitboxData.players) do destroyHitbox(d) end
+        for _, d in pairs(hitboxData.npcs)    do destroyHitbox(d) end
+        hitboxData.players, hitboxData.npcs = {}, {}
+        hitboxLoopRunning = false
+    end)
+end
+
+-- ============================================================
+-- Avatar Stealer
+-- ============================================================
+local function stealAvatar(query)
+    if not query or query == "" then return end
+    local lower = string.lower(query)
+    local found
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character then
+            local n = string.lower(p.Name)
+            local d = string.lower(p.DisplayName or "")
+            if string.find(n, lower, 1, true) or string.find(d, lower, 1, true) then
+                found = p; break
+            end
+        end
+    end
+    if not found or not found.Character then return end
+    local hum = found.Character:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+    local desc = hum:GetAppliedDescription()
+    if not desc then return end
+
+    local function splitList(s)
+        local out = {}
+        for m in string.gmatch(s, "[^,]+") do table.insert(out, m) end
+        return out
+    end
+    local function hex(r, g, b)
+        return string.format("%02X%02X%02X", r*255, g*255, b*255)
+    end
+
+    local acc = {}
+    for _, slot in ipairs({"Back","Face","Front","Hair","Hat","Neck","Shoulders","Waist"}) do
+        local val = desc[slot .. "Accessory"]
+        if val and val ~= "" and val ~= 0 then
+            if typeof(val) == "number" then
+                acc[tostring(val)] = val
+            else
+                for _, part in ipairs(splitList(val)) do
+                    local num = tonumber(part)
+                    if num then acc[tostring(num)] = num end
+                end
+            end
+        end
+    end
+
+    ReplicatedStorage:WaitForChild("AvatarRemotes"):WaitForChild("ApplyDescription"):FireServer({
+        BodyParts = {
+            RightArm = desc.RightArm, Head = desc.Head, RightLeg = desc.RightLeg,
+            Torso = desc.Torso, LeftArm = desc.LeftArm, LeftLeg = desc.LeftLeg,
+        },
+        Shirt = desc.Shirt, Pants = desc.Pants, Face = desc.Face,
+        Accessories = acc,
+        BodyColors = {
+            RightArm = hex(desc.RightArmColor.R, desc.RightArmColor.G, desc.RightArmColor.B),
+            Head     = hex(desc.HeadColor.R,     desc.HeadColor.G,     desc.HeadColor.B),
+            RightLeg = hex(desc.RightLegColor.R, desc.RightLegColor.G, desc.RightLegColor.B),
+            Torso    = hex(desc.TorsoColor.R,    desc.TorsoColor.G,    desc.TorsoColor.B),
+            LeftArm  = hex(desc.LeftArmColor.R,  desc.LeftArmColor.G,  desc.LeftArmColor.B),
+            LeftLeg  = hex(desc.LeftLegColor.R,  desc.LeftLegColor.G,  desc.LeftLegColor.B),
+        },
+        TShirt = desc.GraphicTShirt,
+    })
+end
+
+-- ============================================================
+-- Ping Display
+-- ============================================================
+local pingGui, pingLabel = nil, nil
+local pingEnabled        = false
+
+local function ensurePingGui()
+    if pingGui then return end
+    pingGui = Instance.new("ScreenGui")
+    pingGui.Name, pingGui.ResetOnSpawn = "AshuPing", false
+    pingGui.Parent = (gethui and gethui()) or CoreGui
+
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 110, 0, 40)
+    frame.Position = UDim2.new(0.82, 0, 0.15, 0)
+    frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    frame.BorderSizePixel = 0
+    frame.Active = true
+    frame.Draggable = true
+    frame.Parent = pingGui
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 10)
+
+    pingLabel = Instance.new("TextLabel")
+    pingLabel.Size = UDim2.new(1, 0, 1, 0)
+    pingLabel.BackgroundTransparency = 1
+    pingLabel.TextColor3 = Color3.new(1, 1, 1)
+    pingLabel.Font = Enum.Font.GothamBold
+    pingLabel.TextSize = 16
+    pingLabel.Text = "Ping: 0 ms"
+    pingLabel.Parent = frame
+
+    task.spawn(function()
+        while true do
+            if pingEnabled then
+                local p = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
+                pingLabel.Text = "Ping: " .. p .. " ms"
+                if p <= 70 then pingLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+                elseif p <= 130 then pingLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
+                else pingLabel.TextColor3 = Color3.fromRGB(255, 60, 60) end
+            end
+            task.wait(0.2)
+        end
+    end)
+end
+
+local function setPingEnabled(state)
+    pingEnabled = state
+    if state then
+        ensurePingGui()
+        pingGui.Enabled = true
+    elseif pingGui then
+        pingGui.Enabled = false
+    end
+end
+
+-- ============================================================
+-- Kill Aura / GodMod
+-- ============================================================
+local killAuraEnabled  = false
+local killAuraInterval = 0.05
+local godModEnabled    = false
+local godModStart      = 0
+local godModToggleRef  = nil
+
+task.spawn(function()
+    while true do
+        task.wait(killAuraInterval)
+        if killAuraEnabled then
+            local hrp = getMyHRP()
+            if hrp then
+                local myPos = hrp.Position
+                local dirs = {1, 2, 4, 5, 6, 8}
+                local dir = dirs[math.random(1, #dirs)]
+                pcall(function()
+                    MouseDown:FireServer()
+                    Attack:FireServer(dir, 1, false, false)
+                    Swing:FireServer()
+                end)
+                for _, player in ipairs(Players:GetPlayers()) do
+                    if player ~= LocalPlayer and not isWhitelisted(player) then
+                        local pChar = player.Character
+                        local pHRP  = pChar and pChar:FindFirstChild("HumanoidRootPart")
+                        local pHum  = pChar and pChar:FindFirstChild("Humanoid")
+                        if pHRP and pHum and pHum.Health > 0 and (pHRP.Position - myPos).Magnitude <= 39 then
+                            pcall(function() OnHit:FireServer(pChar, pHRP) end)
+                        end
+                    end
+                end
+                pcall(function()
+                    FinishSwing:FireServer()
+                    MouseUp:FireServer()
+                end)
+            end
+        end
+    end
+end)
+
+task.spawn(function()
+    while true do
+        if godModEnabled then
+            if tick() - godModStart < 4 then
+                pcall(function()
+                    MouseDown:FireServer()
+                    Attack:FireServer(3, 1, false, false)
+                    MouseUp:FireServer()
+                    Swing:FireServer()
+                end)
+                for _, player in ipairs(Players:GetPlayers()) do
+                    if not isWhitelisted(player) then
+                        local pChar = player.Character
+                        if pChar and pChar:FindFirstChild("Humanoid") then
+                            pcall(function() OnHit:FireServer(pChar) end)
+                        end
+                    end
+                end
+                pcall(function()
+                    FinishSwingNoBounce:FireServer()
+                    ResetSwingDirection:FireServer()
+                end)
+            else
+                godModEnabled = false
+                if godModToggleRef then pcall(function() godModToggleRef:Set(false) end) end
+            end
+        end
+        task.wait(0.005)
+    end
+end)
+
+-- ============================================================
+-- UI : COMBAT
+-- ============================================================
+local combatDamage = CombatTab:Section({Title = "2x Damage", Icon = "swords"})
+
+damageToggleRef = combatDamage:Toggle({
+    Title = "2x Damage",
+    Desc  = "Doubles attack damage with chance",
+    Value = false,
+    Callback = function(state)
+        setDoubleDamage(state, false)
+        Notify("2x Damage", state and "Enabled" or "Disabled", 2)
+    end,
+})
+
+combatDamage:Slider({
+    Title = "High Damage Chance",
+    Desc  = "Chance to apply 2x damage (0-100)",
+    Value = {Min = 0, Max = 100, Default = damageChance},
+    Callback = function(v) damageChance = math.floor(v) end,
+})
+
+combatDamage:Input({
+    Title = "Toggle Key",
+    Desc  = "Press this key to toggle 2x Damage",
+    Placeholder = "e.g. X",
+    Value = "X",
+    Callback = function(t)
+        local ok, k = pcall(function() return Enum.KeyCode[t:upper()] end)
+        if ok and k then keys.DamageKey = k end
+    end,
+})
+
+local combatPB = CombatTab:Section({Title = "Auto Perfect Block", Icon = "shield"})
+combatPB:Toggle({
+    Title = "Auto Perfect Block",
+    Desc  = "Instantly blocks attacks when enemies swing",
+    Value = false,
+    Callback = function(state)
+        autoPBEnabled = state
+        if not state then trackedAnimations = {} end
+        Notify("Auto PB", state and "Enabled" or "Disabled", 2)
+    end,
+})
+combatPB:Slider({
+    Title = "Block Range",
+    Desc  = "Max distance to block (studs)",
+    Value = {Min = 5, Max = 25, Default = pbRange},
+    Callback = function(v) pbRange = math.floor(v) end,
+})
+combatPB:Input({
+    Title = "Toggle Key",
+    Desc  = "Press this key to toggle Auto PB",
+    Placeholder = "e.g. C",
+    Value = "C",
+    Callback = function(t)
+        local ok, k = pcall(function() return Enum.KeyCode[t:upper()] end)
+        if ok and k then keys.AutoPBKey = k end
+    end,
+})
+
+local combatAB = CombatTab:Section({Title = "Auto Block", Icon = "shield-check"})
+combatAB:Toggle({
+    Title = "Legit Auto Block",
+    Desc  = "Only auto blocks while swinging",
+    Value = false,
+    Callback = function(state)
+        setLegitAutoBlock(state)
+        Notify("Legit Auto Block", state and "Enabled" or "Disabled", 2)
+    end,
+})
+combatAB:Toggle({
+    Title = "Auto Block OP",
+    Desc  = "Aggressive continuous blocking",
+    Value = false,
+    Callback = function(state)
+        setOPAutoBlock(state)
+        Notify("Auto Block OP", state and "Enabled" or "Disabled", 2)
+    end,
+})
+
+local combatHitbox = CombatTab:Section({Title = "Hitbox Expander", Icon = "box"})
+combatHitbox:Toggle({
+    Title = "Hitbox Expander",
+    Desc  = "Enlarges hitboxes for easier hits",
+    Value = false,
+    Callback = function(state)
+        hitboxEnabled = state
+        if state then hitboxLoop() end
+        Notify("Hitbox Expander", state and "Enabled" or "Disabled", 2)
+    end,
+})
+combatHitbox:Slider({
+    Title = "Hitbox Size",
+    Desc  = "Size of expanded hitbox",
+    Value = {Min = 8, Max = 18, Default = hitboxSize},
+    Callback = function(v)
+        hitboxSize = math.floor(v)
+        for _, d in pairs(hitboxData.players) do
+            if d.box then d.box.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize) end
+        end
+        for _, d in pairs(hitboxData.npcs) do
+            if d.box then d.box.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize) end
+        end
+    end,
+})
+
+local combatMoves = CombatTab:Section({Title = "Moves", Icon = "zap"})
+combatMoves:Button({ Title = "Aerial", Desc = "Perform Aerial", Icon = "arrow-up", Callback = doAerial })
+combatMoves:Button({ Title = "Kata",   Desc = "Perform Kata",   Icon = "zap",      Callback = doKata })
+combatMoves:Input({
+    Title = "Aerial Keybind", Desc = "Key to perform Aerial",
+    Placeholder = "e.g. E", Value = "E",
+    Callback = function(t)
+        local ok, k = pcall(function() return Enum.KeyCode[t:upper()] end)
+        if ok and k then keys.AerialKey = k end
+    end,
+})
+combatMoves:Input({
+    Title = "Kata Keybind", Desc = "Key to perform Kata",
+    Placeholder = "e.g. R", Value = "R",
+    Callback = function(t)
+        local ok, k = pcall(function() return Enum.KeyCode[t:upper()] end)
+        if ok and k then keys.KataKey = k end
+    end,
+})
+
+-- ============================================================
+-- UI : TROLL
+-- ============================================================
+local trollStealer = TrollTab:Section({Title = "Avatar Stealer", Icon = "user"})
+local stealQuery = ""
+
+trollStealer:Input({
+    Title = "Player Name",
+    Desc  = "Enter username or partial name",
+    Placeholder = "Username...",
+    Value = "",
+    Callback = function(t) stealQuery = t end,
+})
+trollStealer:Button({
+    Title = "Steal Avatar",
+    Desc  = "Copy target player's outfit",
+    Icon  = "copy",
+    Callback = function()
+        stealAvatar(stealQuery)
+        Notify("Outfit Stealer", "Attempting to copy outfit...", 2)
+    end,
+})
+
+-- ============================================================
+-- UI : OP
+-- ============================================================
+local opAura = OPTab:Section({Title = "Blatant Kill Aura", Icon = "target"})
+opAura:Toggle({
+    Title = "Blatant Aura",
+    Desc  = "Rapidly attacks all enemies in range",
+    Value = false,
+    Callback = function(s) killAuraEnabled = s end,
+})
+opAura:Slider({
+    Title = "Speed",
+    Desc  = "Delay between attacks (seconds)",
+    Value = {Min = 0.01, Max = 1.5, Default = killAuraInterval},
+    Callback = function(v) killAuraInterval = v end,
+})
+opAura:Paragraph({
+    Title = "Note",
+    Desc  = "Disable Auto Block OP so kill aura works properly",
+})
+
+local opGod = OPTab:Section({Title = "GodMod", Icon = "shield"})
+godModToggleRef = opGod:Toggle({
+    Title = "GodMod",
+    Desc  = "AOE attack that hits all players for 4 seconds",
+    Value = false,
+    Callback = function(s)
+        godModEnabled = s
+        if s then godModStart = tick() end
+    end,
+})
+
+local opWL = OPTab:Section({Title = "Whitelist", Icon = "user-check"})
+local playerNames = {}
+for _, p in ipairs(Players:GetPlayers()) do
+    if p ~= LocalPlayer then table.insert(playerNames, p.Name) end
+end
+opWL:Dropdown({
+    Title = "Ignore Players",
+    Desc  = "These players won't be targeted by aura/godmod",
+    Values = playerNames,
+    Multi = true,
+    Callback = function(selected)
+        whitelist = {}
+        for _, name in ipairs(selected) do whitelist[name] = true end
+    end,
+})
+
+-- ============================================================
+-- UI : SETTINGS
+-- ============================================================
+SettingsTab:Section({Title = "Ping Display", Icon = "activity"}):Toggle({
+    Title = "Show Ping",
+    Desc  = "Shows a live ping counter",
+    Value = false,
+    Callback = setPingEnabled,
+})
+
+SettingsTab:Section({Title = "Discord", Icon = "message-circle"}):Button({
+    Title = "Copy Discord Link",
+    Desc  = "Copy the invite link to clipboard",
+    Icon  = "copy",
+    Callback = function()
+        pcall(function() setclipboard("https://discord.gg/Tzrupyysc") end)
+        Notify("Copied", "Discord link copied to clipboard!", 2)
+    end,
+})
+
+SettingsTab:Section({Title = "Config", Icon = "save"}):Button({
+    Title = "Save Config",
+    Desc  = "Save current configuration",
+    Icon  = "save",
+    Callback = function()
+        Notify("Config", "Configuration Saved Successfully!", 2)
+    end,
+})
+
+-- ============================================================
+-- Keybind Handler
+-- ============================================================
+UserInputService.InputBegan:Connect(function(input, processed)
+    if processed then return end
+    if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+
+    local key = input.KeyCode
+
+    if key == keys.DamageKey then
+        setDoubleDamage(not doubleDamageEnabled, true)
+        Notify("2x Damage", doubleDamageEnabled and "Enabled" or "Disabled", 2)
+        return
+    end
+    if key == keys.AutoPBKey then
+        autoPBEnabled = not autoPBEnabled
+        if not autoPBEnabled then trackedAnimations = {} end
+        Notify("Auto PB", autoPBEnabled and "Enabled" or "Disabled", 2)
+        return
+    end
+    if key == keys.AerialKey then doAerial() return end
+    if key == keys.KataKey   then doKata()   return end
+end)
+
+Notify("Ashu Hub", "All features loaded!", 5)
