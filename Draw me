@@ -1652,6 +1652,8 @@ local presets = {
     { Title = "Netanyahu",   Url = "https://i.postimg.cc/cLRjstJ3/7fa6c425d394991df7b3d36c5b8284a2.jpg" },
     { Title = "Autistic",   Url = "https://i.postimg.cc/Kjm7D42s/c403c6bca2c4927347d1747ac0147e0e.jpg" },
     { Title = "kirk",   Url = "https://i.postimg.cc/2yCd73DM/8430173ebaf5773257e856347b73eb59.jpg" },
+    { Title = "then i walk in",   Url = "https://i.postimg.cc/wvNHQTVJ/cdb870097cff73ba453339b9975d79ae.jpg" },
+    { Title = "drill gangster",   Url = "https://i.postimg.cc/rm4cNFJ4/c446faa8772fc10e83d5f67ed8418fb2.jpg" },
 }
 
 -- ============================================================
