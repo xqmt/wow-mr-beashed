@@ -130,7 +130,7 @@ end
 function LoadVexonHub()
 success, err = pcall(function()
     Window = WindUI:CreateWindow({
-        Title = "VexonHub",
+        Title = "VexonHub - Crack",
         Icon = "rbxassetid://84519376661277", 
         Author = "The Strongest Battle Grounds",
         Folder = "vexonhub",
