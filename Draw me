@@ -1654,6 +1654,7 @@ local presets = {
     { Title = "kirk",   Url = "https://i.postimg.cc/2yCd73DM/8430173ebaf5773257e856347b73eb59.jpg" },
     { Title = "then i walk in",   Url = "https://i.postimg.cc/wvNHQTVJ/cdb870097cff73ba453339b9975d79ae.jpg" },
     { Title = "drill gangster",   Url = "https://i.postimg.cc/rm4cNFJ4/c446faa8772fc10e83d5f67ed8418fb2.jpg" },
+    { Title = "Shut up sub 5",   Url = "https://i.postimg.cc/t4gy7H1G/19dd960ca690253c30664f8e4123cf03.jpg" },
 }
 
 -- ============================================================
