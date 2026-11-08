@@ -1649,6 +1649,9 @@ local presets = {
     { Title = "Mogged 2",   Url = "https://i.postimg.cc/nLsnMzbG/0d390827e5526cf1cbd9c106a48de409.jpg" },
     { Title = "linkmon99",   Url = "https://i.postimg.cc/Hn1MBR9j/665fb6924cb1a0bba4af0bb6e2cb4d9d.jpg" },
     { Title = "Brutal",   Url = "https://i.postimg.cc/d3cC4pjQ/c0ffb8f236cce788134e9d76c4bb4524.jpg" },
+    { Title = "Netanyahu",   Url = "https://i.postimg.cc/cLRjstJ3/7fa6c425d394991df7b3d36c5b8284a2.jpg" },
+    { Title = "Autistic",   Url = "https://i.postimg.cc/cLRjstJ3/7fa6c425d394991df7b3d36c5b8284a2.jpg" },
+    { Title = "kirk",   Url = "https://i.postimg.cc/Kjm7D42s/c403c6bca2c4927347d1747ac0147e0e.jpg" },
 }
 
 -- ============================================================
