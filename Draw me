@@ -1693,6 +1693,15 @@ infoSection:Paragraph({
 })
 
 infoSection:Paragraph({
+    Title = "Support image types",
+    Desc = ".jpg .jpeg .png",
+    Image = "solar:check-circle-bold",
+    Color = "Green",
+    ImageSize = 36,
+    ThumbnailSize = 80,
+})
+
+infoSection:Paragraph({
     Title = "Warning",
     Desc = "Don't upload any 18+ or NSFW images to the canvas. That includes all adult content. Doing so can get you banned.",
     Image = "solar:danger-triangle-bold",
