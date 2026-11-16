@@ -15,8 +15,8 @@ Library.ShowCustomCursor          = true
 Library.NotifySide                = "Right"
 
 local Window = Library:CreateWindow({
-    Title = "Nigga.sus",
-    Footer = "Nigga 💀",
+    Title = "symbol.hit",
+    Footer = "",
     Center = true,
     AutoShow = true,
     Resizable = true,
@@ -52,22 +52,103 @@ local playerGui         = localPlayer:WaitForChild("PlayerGui")
 --// ============================================================
 local silentAimEnabled   = false
 local silentAimMethod    = "Normal"
-local silentAimIgnoreFov = false
+local wallbangConnection = "FireServer"
+local wallbangNetOwner   = false
 local flickInProgress    = false
 local murdererCache      = nil
 local sheriffCache       = nil
-local touchStart         = {}
-local touchMoved         = {}
-local touchThreshold     = 5
+local heroCache          = nil
 
-local fovConfig = {
-    Visible   = false,
-    Radius    = 90,
-    Thickness = 1,
-    NumSides  = 100,
-    Filled    = false,
-    Color     = Color3.fromRGB(255, 255, 255),
-}
+--// ============================================================
+--// FLOATING SHOOT BUTTON (Delta 100% Compatible, Black BG, 5px Corner, Gradient Stroke)
+--// ============================================================
+local floatGui = Instance.new("ScreenGui")
+floatGui.Name = "RuzFloatShootGui"
+floatGui.ResetOnSpawn = false
+floatGui.DisplayOrder = 99999
+floatGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+local coreGuiTarget = gethui or function() return CoreGui end
+pcall(function() floatGui.Parent = coreGuiTarget() end)
+if not floatGui.Parent then floatGui.Parent = playerGui end
+
+local floatBtn = Instance.new("TextButton")
+floatBtn.Name = "ShootButton"
+floatBtn.Size = UDim2.new(0, 120, 0, 85)
+floatBtn.Position = UDim2.new(0.85, 0, 0.6, 0)
+floatBtn.AnchorPoint = Vector2.new(0.5, 0.5)
+floatBtn.BackgroundColor3 = Color3.fromRGB(0, 0, 0) -- Solid Black Background
+floatBtn.Text = "FIRE"
+floatBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+floatBtn.TextSize = 14
+floatBtn.Font = Enum.Font.GothamBold
+floatBtn.AutoButtonColor = false
+floatBtn.Parent = floatGui
+
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 5) -- 5px Corner Radius
+corner.Parent = floatBtn
+
+local stroke = Instance.new("UIStroke")
+stroke.Thickness = 2.5
+stroke.Parent = floatBtn
+
+local gradient = Instance.new("UIGradient")
+gradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 50, 50)),
+    ColorSequenceKeypoint.new(0.33, Color3.fromRGB(255, 165, 0)),
+    ColorSequenceKeypoint.new(0.66, Color3.fromRGB(100, 50, 255)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 50, 255))
+})
+gradient.Parent = stroke -- Gradient applied to stroke border
+
+-- Gradient rotation animation
+RunService.RenderStepped:Connect(function()
+    if gradient then
+        gradient.Rotation = (gradient.Rotation + 2) % 360
+    end
+end)
+
+local doSilentShoot -- forward declaration
+
+floatBtn.MouseButton1Click:Connect(function()
+    if silentAimEnabled then
+        doSilentShoot()
+    end
+end)
+
+-- Draggable implementation for mobile/PC
+local dragging, dragInput, dragStart, startPos
+floatBtn.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = floatBtn.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+floatBtn.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - dragStart
+        floatBtn.Position = UDim2.new(
+            startPos.X.Scale,
+            startPos.X.Offset + delta.X,
+            startPos.Y.Scale,
+            startPos.Y.Offset + delta.Y
+        )
+    end
+end)
 
 --// ============================================================
 --// HIT FEEDBACK (SOUNDS + OVERLAY)
@@ -176,7 +257,7 @@ local function watchForKill(target)
 end
 
 --// ============================================================
---// ROUND / ROLE CACHE
+--// ROUND / ROLE CACHE (Murderer, Sheriff, Hero)
 --// ============================================================
 local CurrentRoundClient = nil
 pcall(function()
@@ -186,14 +267,15 @@ end)
 local function updateRoleCache()
     task.wait(1); if not CurrentRoundClient then return end
     local playerData = CurrentRoundClient.PlayerData
-    murdererCache, sheriffCache = nil, nil
+    murdererCache, sheriffCache, heroCache = nil, nil, nil
     if playerData and next(playerData) then
         for k, v in pairs(playerData) do
             if v.Role then
                 local p = Players:FindFirstChild(k)
                 if p then
                     if v.Role == "Murderer" then murdererCache = p
-                    elseif v.Role == "Sheriff" then sheriffCache = p end
+                    elseif v.Role == "Sheriff" then sheriffCache = p
+                    elseif v.Role == "Hero" then heroCache = p end
                 end
             end
         end
@@ -212,6 +294,37 @@ pcall(function()
     end
 end)
 
+local function detectRole(player)
+    local role = "Innocent"
+    local data = CurrentRoundClient and CurrentRoundClient.PlayerData and CurrentRoundClient.PlayerData[player.Name]
+    if data then
+        local r = tostring(data.Role or data.role or data.Team or data.RoleSelect or ""):lower()
+        if r:find("murd") or r:find("killer") then role = "Murderer"
+        elseif r:find("sheriff") or r:find("gun") then role = "Sheriff"
+        elseif r:find("hero") then role = "Hero" end
+    end
+    if role == "Innocent" then
+        local attr = player:GetAttribute("Role") or player:GetAttribute("RoleSelect") or player:GetAttribute("Team")
+        if attr then
+            local r = tostring(attr):lower()
+            if r:find("murd") or r:find("killer") then role = "Murderer"
+            elseif r:find("sheriff") then role = "Sheriff"
+            elseif r:find("hero") then role = "Hero" end
+        end
+    end
+    if role == "Innocent" then
+        local c = player.Character
+        if c then
+            if c:FindFirstChild("Knife") or c:FindFirstChild("Blade") then role = "Murderer"
+            elseif c:FindFirstChild("Gun") or c:FindFirstChild("Revolver") then role = "Sheriff" end
+        end
+        local bp = player:FindFirstChild("Backpack")
+        if bp and (bp:FindFirstChild("Knife") or bp:FindFirstChild("Blade")) then role = "Murderer"
+        elseif bp and (bp:FindFirstChild("Gun") or bp:FindFirstChild("Revolver")) then role = "Sheriff" end
+    end
+    return role
+end
+
 local function predictPosition(player, prediction)
     local character = player.Character; if not character then return Vector3.zero end
     local root = character:FindFirstChild("UpperTorso") or character:FindFirstChild("HumanoidRootPart")
@@ -220,6 +333,20 @@ local function predictPosition(player, prediction)
     return root.Position
         + root.AssemblyLinearVelocity * Vector3.new(0.75, 0.5, 0.75) * prediction / 15
         + hum.MoveDirection * prediction
+end
+
+local function applyNetworkOwnership(target)
+    if not wallbangNetOwner or not target or not target.Character then return end
+    local tChar = target.Character
+    for _, part in ipairs(tChar:GetDescendants()) do
+        if part:IsA("BasePart") then
+            pcall(function()
+                if part:CanSetNetworkOwnership() then
+                    part:SetNetworkOwner(localPlayer)
+                end
+            end)
+        end
+    end
 end
 
 local function shootFromRightHand(target)
@@ -238,9 +365,21 @@ local function wallbangShoot(target)
     local gun = localPlayer.Character:FindFirstChild("Gun"); if not gun then return end
     local char = target.Character; if not char then return end
     local hrp = char:FindFirstChild("HumanoidRootPart"); if not hrp then return end
+    applyNetworkOwnership(target)
     local predicted = predictPosition(target, 2.8)
     local shoot = gun:FindFirstChild("Shoot"); if not shoot then return end
-    pcall(function() shoot:FireServer(CFrame.new(hrp.Position), CFrame.new(predicted)) end)
+    
+    pcall(function()
+        if wallbangConnection == "FireServer" then
+            shoot:FireServer(CFrame.new(hrp.Position), CFrame.new(predicted))
+        elseif wallbangConnection == "InvokeServer" then
+            pcall(function() shoot:InvokeServer(CFrame.new(hrp.Position), CFrame.new(predicted)) end)
+        elseif wallbangConnection == "Fire" then
+            pcall(function() shoot:Fire(CFrame.new(hrp.Position), CFrame.new(predicted)) end)
+        elseif wallbangConnection == "RawPosition" then
+            shoot:FireServer(hrp.Position, predicted)
+        end
+    end)
 end
 
 local function flickCamera()
@@ -358,25 +497,16 @@ local function selectTarget()
     if sheriffCache and sheriffCache.Character and sheriffCache.Character:FindFirstChild("HumanoidRootPart") then
         return sheriffCache
     end
+    if heroCache and heroCache.Character and heroCache.Character:FindFirstChild("HumanoidRootPart") then
+        return heroCache
+    end
     local wh = findNearestWeaponHolder(); if wh then return wh end
     local kh = findKnifeHolder(); if kh and kh ~= localPlayer then return kh end
     local gh = findGunHolder(); if gh and gh ~= localPlayer then return gh end
     return findNearestPlayer()
 end
 
-local function isInFOV(target)
-    if silentAimIgnoreFov then return true end
-    if not fovConfig.Visible then return true end
-    if not target.Character then return false end
-    local hrp = target.Character:FindFirstChild("HumanoidRootPart"); if not hrp then return false end
-    local cam = workspace.CurrentCamera
-    local pos, onScreen = cam:WorldToViewportPoint(hrp.Position)
-    if not onScreen then return false end
-    local center = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y / 2)
-    return (center - Vector2.new(pos.X, pos.Y)).Magnitude <= fovConfig.Radius
-end
-
-local function doSilentShoot()
+doSilentShoot = function()
     if not localPlayer.Character then return end
     if not localPlayer.Character:FindFirstChild("Gun") then
         local gun = localPlayer.Backpack:FindFirstChild("Gun")
@@ -387,7 +517,7 @@ local function doSilentShoot()
         if not localPlayer.Character:FindFirstChild("Gun") then return end
     end
     local target = selectTarget()
-    if not target or not isInFOV(target) then return end
+    if not target then return end
     if silentAimMethod == "Wallbang" then
         wallbangShoot(target); watchForKill(target)
     elseif silentAimMethod == "Flick" then
@@ -407,25 +537,7 @@ UserInputService.InputBegan:Connect(function(input, gp)
     if gp or not silentAimEnabled then return end
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
         doSilentShoot()
-    elseif input.UserInputType == Enum.UserInputType.Touch then
-        touchStart[input] = input.Position; touchMoved[input] = false
     end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-    if input.UserInputType ~= Enum.UserInputType.Touch then return end
-    if not touchStart[input] then return end
-    local d = input.Position - touchStart[input]
-    if touchThreshold <= math.abs(d.X) + math.abs(d.Y) then touchMoved[input] = true end
-end)
-
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType ~= Enum.UserInputType.Touch then return end
-    if not touchStart[input] then return end
-    local moved = touchMoved[input]
-    touchStart[input] = nil; touchMoved[input] = nil
-    if not silentAimEnabled or moved then return end
-    doSilentShoot()
 end)
 
 if hookmetamethod and getnamecallmethod and checkcaller then
@@ -437,16 +549,25 @@ if hookmetamethod and getnamecallmethod and checkcaller then
                 return oldNamecall(self, ...)
             end
             local target = selectTarget()
-            if not target or not isInFOV(target) then return oldNamecall(self, ...) end
+            if not target then return oldNamecall(self, ...) end
             local tChar = target.Character
             local tHRP  = tChar and tChar:FindFirstChild("HumanoidRootPart")
             if not tHRP then return oldNamecall(self, ...) end
+            applyNetworkOwnership(target)
             local predicted = predictPosition(target, 2.8)
             local myChar    = localPlayer.Character
             local rightHand = myChar and myChar:FindFirstChild("RightHand")
             if not rightHand then return oldNamecall(self, ...) end
             if silentAimMethod == "Wallbang" then
-                local r = oldNamecall(self, CFrame.new(tHRP.Position), CFrame.new(predicted))
+                local args = { ... }
+                if wallbangConnection == "RawPosition" then
+                    args[1] = tHRP.Position
+                    args[2] = predicted
+                else
+                    args[1] = CFrame.new(tHRP.Position)
+                    args[2] = CFrame.new(predicted)
+                end
+                local r = oldNamecall(self, unpack(args))
                 watchForKill(target); return r
             end
             if silentAimMethod == "Flick" then
@@ -466,24 +587,8 @@ if hookmetamethod and getnamecallmethod and checkcaller then
     end)
 end
 
-local circle = nil
-pcall(function()
-    circle = Drawing.new("Circle")
-    circle.Visible = fovConfig.Visible; circle.Thickness = fovConfig.Thickness
-    circle.NumSides = fovConfig.NumSides; circle.Filled = fovConfig.Filled
-    circle.Color = fovConfig.Color; circle.Radius = fovConfig.Radius
-end)
-
-if circle then
-    RunService.RenderStepped:Connect(function()
-        circle.Position = Vector2.new(workspace.CurrentCamera.ViewportSize.X / 2, workspace.CurrentCamera.ViewportSize.Y / 2)
-        circle.Radius = fovConfig.Radius
-        circle.Visible = fovConfig.Visible
-    end)
-end
-
 --// ============================================================
---// UTILITIES — DESYNC VOID (must come BEFORE grab / kill so they can pause it)
+--// UTILITIES — DESYNC VOID
 --// ============================================================
 local desyncEnabled    = false
 local desyncConnection = nil
@@ -531,7 +636,7 @@ local function desyncSetEnabled(value)
 end
 
 --// ============================================================
---// UTILITIES — AUTO GRAB GUN (v2 — more reliable)
+--// UTILITIES — AUTO GRAB GUN
 --// ============================================================
 local autoGrabGunEnabled  = false
 local grabGunThread       = nil
@@ -562,7 +667,6 @@ local function findGunDrop()
     return nil
 end
 
--- Collect drop parts — Handle gets top priority, cap raised to 8
 local function collectDropTouchParts(gd)
     local priority, rest = {}, {}
     if gd:IsA("BasePart") then priority[#priority+1] = gd end
@@ -586,7 +690,6 @@ local function collectDropTouchParts(gd)
     return out
 end
 
--- Key body parts — hands/feet first (this is what MM2 actually listens to)
 local function collectKeyParts(character)
     local parts = {}
     local priorities = {
@@ -623,7 +726,6 @@ local function grabGunFast(gd)
     local myParts = collectKeyParts(character)
     if #myParts == 0 then return false, "nochar" end
 
-    -- Pause desync AND let any in-flight teleport finish before touching
     local pausedByUs = false
     if desyncEnabled and not desyncPaused then
         pausedByUs = true
@@ -679,11 +781,9 @@ local function startGrabGunHammer(gd)
         pcall(function()
             while autoGrabGunEnabled and gd.Parent and not hasGunOrRevolver(localPlayer) do
                 if grabGunFast(gd) then break end
-                -- Aggressive for first 2 s, then back off
                 task.wait((tick() - startTime) < 2 and 0.03 or 0.1)
             end
         end)
-        -- Self-cleanup so poller can retry if we exited without success
         if grabGunHammerThread == myThread then grabGunHammerThread = nil end
         if gd.Parent and autoGrabGunEnabled and not hasGunOrRevolver(localPlayer) then
             if grabGunKnownDrop == gd then grabGunKnownDrop = nil end
@@ -701,7 +801,6 @@ local function startGrabGunWatcher()
         local inDrop = d.Parent and isGunDropName(d.Parent.Name)
         if not (isDrop or inDrop) then return end
         if hasGunOrRevolver(localPlayer) then return end
-        -- startGrabGunHammer is fully synchronous, safe to call directly
         startGrabGunHammer(isDrop and d or d.Parent)
     end)
 
@@ -744,13 +843,14 @@ local function tryGrabGunNow()
 end
 
 --// ============================================================
---// UTILITIES — MURDER KILL ALL (OnyxHub style)
+--// UTILITIES — MURDER KILL ALL
 --// ============================================================
 local autoKillAllEnabled = false
 local autoKillAllThread  = nil
 local autoKillAllDelay   = 0.2
 
 local function isMurderer()
+    if murdererCache == localPlayer then return true end
     local character = localPlayer.Character
     if character and character:FindFirstChild("Knife") then return true end
     local bp = localPlayer:FindFirstChild("Backpack")
@@ -817,32 +917,6 @@ local function killAllPlayers()
     return count
 end
 
-local function killTargetByName(name)
-    if not name or name == "" then return 0, "noname" end
-    if not isMurderer() then return 0, "notmurderer" end
-    local target = Players:FindFirstChild(name)
-    if not target then return 0, "notfound" end
-    local knife = getKnifeWithChar()
-    if not knife then return 0, "noknife" end
-    local events = knife:FindFirstChild("Events")
-    if not events then return 0, "noevents" end
-    local knifeStabbed  = events:FindFirstChild("KnifeStabbed")
-    local handleTouched = events:FindFirstChild("HandleTouched")
-    if not (knifeStabbed and handleTouched) then return 0, "noremote" end
-    pcall(function() knifeStabbed:FireServer() end)
-    local pc = target.Character
-    local bodyPart = pc and (
-        pc:FindFirstChild("HumanoidRootPart")
-        or pc:FindFirstChild("Torso")
-        or pc:FindFirstChildWhichIsA("BasePart")
-    )
-    if bodyPart then
-        pcall(function() handleTouched:FireServer(bodyPart) end)
-        return 1
-    end
-    return 0
-end
-
 local function startAutoKillAll()
     if autoKillAllThread then return end
     autoKillAllThread = task.spawn(function()
@@ -863,7 +937,7 @@ local function stopAutoKillAll()
 end
 
 --// ============================================================
---// UTILITIES — FLING (integrated with desync)
+--// UTILITIES — FLING (Net Owner + Velocity Spoof + Murderer/Sheriff/Hero support)
 --// ============================================================
 local flingInProgress = false
 
@@ -888,6 +962,16 @@ local function flingPlayer(target)
         return
     end
 
+    for _, p in ipairs(tChar:GetDescendants()) do
+        if p:IsA("BasePart") then
+            pcall(function()
+                if p:CanSetNetworkOwnership() then
+                    p:SetNetworkOwner(localPlayer)
+                end
+            end)
+        end
+    end
+
     local camTarget = head or acc or tHum
     if camTarget then workspace.CurrentCamera.CameraSubject = camTarget end
     if not tChar:FindFirstChildWhichIsA("BasePart") then
@@ -899,8 +983,12 @@ local function flingPlayer(target)
         local cf = CFrame.new(part.Position) * offset * rot
         rootPart.CFrame = cf
         pcall(function() character:SetPrimaryPartCFrame(cf) end)
-        rootPart.Velocity = Vector3.new(9e7, 9e8, 9e7)
-        rootPart.RotVelocity = Vector3.new(9e8, 9e8, 9e8)
+        rootPart.Velocity = Vector3.new(9.99e9, 9.99e9, 9.99e9)
+        rootPart.RotVelocity = Vector3.new(9.99e9, 9.99e9, 9.99e9)
+        pcall(function()
+            part.Velocity = Vector3.new(9.99e9, 9.99e9, 9.99e9)
+            part.RotVelocity = Vector3.new(9.99e9, 9.99e9, 9.99e9)
+        end)
     end
 
     local function doFling(targetPart)
@@ -910,7 +998,7 @@ local function flingPlayer(target)
             if rootPart and tHum then
                 local vel = targetPart.Velocity.Magnitude
                 if vel < 40 then
-                    rot += 100
+                    rot += 120
                     for _ = 1, 4 do
                         local md = tHum.MoveDirection * vel / 1.25
                         setCF(targetPart, CFrame.new(0, 1.5, 0) + md, CFrame.Angles(math.rad(rot), 0, 0))
@@ -921,9 +1009,9 @@ local function flingPlayer(target)
                 else
                     local md = tHum.MoveDirection; local ws = tHum.WalkSpeed
                     setCF(targetPart, CFrame.new(md.X * ws * 0.12, 3, md.Z * ws * 0.12), CFrame.Angles(math.pi/2, 0, 0))
-                    rootPart.Velocity = Vector3.new(9e8, 9e8, 9e8); task.wait()
+                    rootPart.Velocity = Vector3.new(9.99e9, 9.99e9, 9.99e9); task.wait()
                     setCF(targetPart, CFrame.new(-md.X * ws * 0.06, -3, -md.Z * ws * 0.06), CFrame.Angles(0, 0, 0))
-                    rootPart.Velocity = Vector3.new(9e8, 9e8, 9e8); task.wait()
+                    rootPart.Velocity = Vector3.new(9.99e9, 9.99e9, 9.99e9); task.wait()
                 end
                 if not (endTime < tick()) then continue end
             end
@@ -958,16 +1046,75 @@ local function flingPlayer(target)
     if wasDesyncing then task.delay(0.5, function() desyncPaused = false end) end
 end
 
-local function flingWeaponHolder(weaponName)
-    if flingInProgress then return end
+local function getMurdererPlayer()
+    if murdererCache and murdererCache.Character and murdererCache.Character:FindFirstChild("HumanoidRootPart") then
+        return murdererCache
+    end
     for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= localPlayer then
-            local c = p.Character
-            local bp = p:FindFirstChild("Backpack")
-            if (c and c:FindFirstChild(weaponName)) or (bp and bp:FindFirstChild(weaponName)) then
-                task.spawn(flingPlayer, p); return
-            end
+        if p ~= localPlayer and p.Character then
+            if detectRole(p) == "Murderer" then return p end
         end
+    end
+    return nil
+end
+
+local function getSheriffPlayer()
+    if sheriffCache and sheriffCache.Character and sheriffCache.Character:FindFirstChild("HumanoidRootPart") then
+        return sheriffCache
+    end
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= localPlayer and p.Character then
+            if detectRole(p) == "Sheriff" then return p end
+        end
+    end
+    return nil
+end
+
+local function getHeroPlayer()
+    if heroCache and heroCache.Character and heroCache.Character:FindFirstChild("HumanoidRootPart") then
+        return heroCache
+    end
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= localPlayer and p.Character then
+            if detectRole(p) == "Hero" then return p end
+        end
+    end
+    return nil
+end
+
+local function flingMurderer()
+    if flingInProgress then return end
+    local m = getMurdererPlayer()
+    if m then
+        task.spawn(flingPlayer, m)
+    else
+        pcall(function()
+            Library:Notify({ Title = "Fling Murderer", Content = "Murderer not found in role set yet!", Duration = 2 })
+        end)
+    end
+end
+
+local function flingSheriff()
+    if flingInProgress then return end
+    local s = getSheriffPlayer()
+    if s then
+        task.spawn(flingPlayer, s)
+    else
+        pcall(function()
+            Library:Notify({ Title = "Fling Sheriff", Content = "Sheriff not found in role set yet!", Duration = 2 })
+        end)
+    end
+end
+
+local function flingHero()
+    if flingInProgress then return end
+    local h = getHeroPlayer()
+    if h then
+        task.spawn(flingPlayer, h)
+    else
+        pcall(function()
+            Library:Notify({ Title = "Fling Hero", Content = "Hero not found in role set yet!", Duration = 2 })
+        end)
     end
 end
 
@@ -1018,7 +1165,6 @@ local function startAntiFling()
     antiFlingConn = RunService.Stepped:Connect(function()
         if not antiFlingEnabled then return end
         if tick() < antiFlingGraceUntil then return end
-        -- Don't fight the intentional desync void teleport
         if desyncEnabled and (desyncPaused or desyncBusy) then return end
 
         local char = localPlayer.Character
@@ -1027,16 +1173,13 @@ local function startAntiFling()
         local hum = char:FindFirstChildOfClass("Humanoid")
         if not hrp or not hum or hum.Health <= 0 then return end
 
-        -- Strip injected movers on HRP
         antiFlingStripMovers(hrp)
 
-        -- Reset seated state (common fling setup)
         if hum.Sit then
             hum.Sit = false
             pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
         end
 
-        -- Reset velocity on every body part + accessory handles
         for _, p in ipairs(char:GetChildren()) do
             if p:IsA("BasePart") then
                 antiFlingResetPart(p)
@@ -1441,36 +1584,6 @@ local function clearAllHighlights()
     end
 end
 
-local function detectRole(player)
-    local role = "Innocent"
-    local data = roleData[player.Name]
-    if data then
-        local r = tostring(data.Role or data.role or data.Team or data.RoleSelect or ""):lower()
-        if r:find("murd") or r:find("killer") then role = "Murderer"
-        elseif r:find("sheriff") or r:find("gun") then role = "Sheriff"
-        elseif r:find("hero") then role = "Hero" end
-    end
-    if role == "Innocent" then
-        local attr = player:GetAttribute("Role") or player:GetAttribute("RoleSelect") or player:GetAttribute("Team")
-        if attr then
-            local r = tostring(attr):lower()
-            if r:find("murd") or r:find("killer") then role = "Murderer"
-            elseif r:find("sheriff") then role = "Sheriff"
-            elseif r:find("hero") then role = "Hero" end
-        end
-    end
-    if role == "Innocent" then
-        local c = player.Character
-        if c then
-            if c:FindFirstChild("Knife") or c:FindFirstChild("Blade") then role = "Murderer"
-            elseif c:FindFirstChild("Gun") or c:FindFirstChild("Revolver") then role = "Sheriff" end
-        end
-        local bp = player:FindFirstChild("Backpack")
-        if bp and (bp:FindFirstChild("Knife") or bp:FindFirstChild("Blade")) then role = "Murderer" end
-    end
-    return role
-end
-
 local function findRoleRemote()
     for _, name in ipairs({"GetCurrentPlayerData","GetPlayerData","PlayerData","GetRoles","RoleData"}) do
         local r = ReplicatedStorage:FindFirstChild(name, true)
@@ -1575,28 +1688,17 @@ CombatGroup:AddDropdown("SilentAimMethod", {
     Callback = function(v) silentAimMethod = v end,
 })
 
-CombatGroup:AddToggle("SilentAimIgnoreFov", {
-    Text = "Ignore FOV", Default = false,
-    Tooltip = "Target players outside the FOV ring (only matters when FOV is visible)",
-    Callback = function(v) silentAimIgnoreFov = v end,
+CombatGroup:AddDropdown("WallbangConnection", {
+    Values = { "FireServer", "InvokeServer", "Fire", "RawPosition" }, Default = "FireServer",
+    Text = "Wallbang Connection",
+    Tooltip = "Method used to fire the remote during Wallbang",
+    Callback = function(v) wallbangConnection = v end,
 })
 
-CombatGroup:AddDivider()
-
-CombatGroup:AddToggle("FOVVisibleToggle", {
-    Text = "FOV Visible", Default = false,
-    Callback = function(v) fovConfig.Visible = v end,
-})
-
-CombatGroup:AddSlider("FOVSizeSlider", {
-    Text = "FOV Size", Default = 90, Min = 30, Max = 200,
-    Rounding = 0, Suffix = "px",
-    Callback = function(v) fovConfig.Radius = v end,
-})
-
-CombatGroup:AddLabel("FOV Color"):AddColorPicker("FOVColorPicker", {
-    Default = Color3.fromRGB(255, 255, 255), Title = "FOV Ring Color",
-    Callback = function(v) fovConfig.Color = v; if circle then circle.Color = v end end,
+CombatGroup:AddToggle("WallbangNetOwner", {
+    Text = "Wallbang Net Ownership", Default = false,
+    Tooltip = "Forces Network Ownership of target parts to you before firing",
+    Callback = function(v) wallbangNetOwner = v end,
 })
 
 local HitGroup = Tabs.Combat:AddRightGroupbox("Feedback")
@@ -1775,9 +1877,10 @@ KillGroup:AddSlider("AutoKillAllDelay", {
     Callback = function(v) autoKillAllDelay = v end,
 })
 
---// Fling + Anti-Fling
-UtilRight:AddButton("Fling Murderer", function() flingWeaponHolder("Knife") end)
-UtilRight:AddButton("Fling Sheriff", function() flingWeaponHolder("Gun") end)
+--// Fling + Anti-Fling (Updated with Murderer, Sheriff, Hero buttons)
+UtilRight:AddButton("Fling Murderer", flingMurderer)
+UtilRight:AddButton("Fling Sheriff", flingSheriff)
+UtilRight:AddButton("Fling Hero", flingHero)
 
 UtilRight:AddDivider()
 
@@ -1881,6 +1984,7 @@ MenuGroup:AddButton("Unload", function()
     stopAutoKillAll()
     stopGrabGunWatcher()
     if stopAntiFling then stopAntiFling() end
+    pcall(function() floatGui:Destroy() end)
     Library:Unload()
 end)
 
@@ -1890,7 +1994,6 @@ MenuGroup:AddLabel("Menu Keybind"):AddKeyPicker("MenuKeybind", {
 
 Library.ToggleKeybind = Options.MenuKeybind
 
---// Desync Keybind (G) — outside the menu
 UserInputService.InputBegan:Connect(function(input, gp)
     if gp then return end
     if input.KeyCode == desyncKeybind then
@@ -1902,7 +2005,6 @@ UserInputService.InputBegan:Connect(function(input, gp)
     end
 end)
 
---// Managers
 ThemeManager:SetLibrary(Library)
 SaveManager:SetLibrary(Library)
 SaveManager:IgnoreThemeSettings()
