@@ -1,4 +1,4 @@
---// RuzHub Lite — Silent Aim + ESP Cham + Hit Feedback + Utilities + Crosshair + Desync Void + Murder Kill All
+--// RuzHub Lite — Silent Aim + Auto Shoot + ESP Cham + Hit Feedback + Utilities + Crosshair + Desync Void + Murder Kill All
 --// UI: Obsidian (https://github.com/deividcomsono/Obsidian)
 
 local Repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
@@ -44,13 +44,16 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local SoundService      = game:GetService("SoundService")
 local CoreGui           = game:GetService("CoreGui")
 local TweenService      = game:GetService("TweenService")
+local Stats             = game:GetService("Stats")
 local localPlayer       = Players.LocalPlayer
 local playerGui         = localPlayer:WaitForChild("PlayerGui")
 
 --// ============================================================
---// SILENT AIM
+--// SILENT AIM & AUTO SHOOT
 --// ============================================================
 local silentAimEnabled   = false
+local autoShootEnabled   = false
+local autoShootConnection = nil
 local silentAimMethod    = "Normal"
 local wallbangConnection = "FireServer"
 local wallbangNetOwner   = false
@@ -65,7 +68,7 @@ local heroCache          = nil
 local floatGui = Instance.new("ScreenGui")
 floatGui.Name = "RuzFloatShootGui"
 floatGui.ResetOnSpawn = false
-floatGui.DisplayOrder = 99999
+floatGui.DisplayOrder = 9999
 floatGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
 local coreGuiTarget = gethui or function() return CoreGui end
@@ -77,8 +80,8 @@ floatBtn.Name = "ShootButton"
 floatBtn.Size = UDim2.new(0, 120, 0, 85)
 floatBtn.Position = UDim2.new(0.85, 0, 0.6, 0)
 floatBtn.AnchorPoint = Vector2.new(0.5, 0.5)
-floatBtn.BackgroundColor3 = Color3.fromRGB(0, 0, 0) -- Solid Black Background
-floatBtn.Text = "FIRE"
+floatBtn.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+floatBtn.Text = "SHOOT"
 floatBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 floatBtn.TextSize = 14
 floatBtn.Font = Enum.Font.GothamBold
@@ -86,7 +89,7 @@ floatBtn.AutoButtonColor = false
 floatBtn.Parent = floatGui
 
 local corner = Instance.new("UICorner")
-corner.CornerRadius = UDim.new(0, 5) -- 5px Corner Radius
+corner.CornerRadius = UDim.new(0, 5)
 corner.Parent = floatBtn
 
 local stroke = Instance.new("UIStroke")
@@ -100,9 +103,8 @@ gradient.Color = ColorSequence.new({
     ColorSequenceKeypoint.new(0.66, Color3.fromRGB(100, 50, 255)),
     ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 50, 255))
 })
-gradient.Parent = stroke -- Gradient applied to stroke border
+gradient.Parent = stroke
 
--- Gradient rotation animation
 RunService.RenderStepped:Connect(function()
     if gradient then
         gradient.Rotation = (gradient.Rotation + 2) % 360
@@ -117,7 +119,6 @@ floatBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- Draggable implementation for mobile/PC
 local dragging, dragInput, dragStart, startPos
 floatBtn.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -465,11 +466,11 @@ local function findGunHolder()
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= localPlayer then
             local bp = p:FindFirstChild("Backpack")
-            if bp and bp:FindFirstChild("Gun") then return p end
+            if bp and (bp:FindFirstChild("Gun") or bp:FindFirstChild("Revolver")) then return p end
         end
     end
     for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= localPlayer and p.Character and p.Character:FindFirstChild("Gun") then return p end
+        if p ~= localPlayer and p.Character and (p.Character:FindFirstChild("Gun") or p.Character:FindFirstChild("Revolver")) then return p end
     end
     return nil
 end
@@ -509,12 +510,12 @@ end
 doSilentShoot = function()
     if not localPlayer.Character then return end
     if not localPlayer.Character:FindFirstChild("Gun") then
-        local gun = localPlayer.Backpack:FindFirstChild("Gun")
+        local gun = localPlayer.Backpack:FindFirstChild("Gun") or localPlayer.Backpack:FindFirstChild("Revolver")
         if gun then
             local hum = localPlayer.Character:FindFirstChild("Humanoid")
-            if hum then hum:EquipTool(gun); task.wait(0.1) end
+            if hum then hum:EquipTool(gun); task.wait(0.05) end
         end
-        if not localPlayer.Character:FindFirstChild("Gun") then return end
+        if not localPlayer.Character:FindFirstChild("Gun") and not localPlayer.Character:FindFirstChild("Revolver") then return end
     end
     local target = selectTarget()
     if not target then return end
@@ -524,12 +525,48 @@ doSilentShoot = function()
         if flickInProgress then return end
         flickInProgress = true
         task.spawn(function()
-            flickCamera(); task.wait(0.12)
+            flickCamera(); task.wait(0.05)
             shootFromRightHand(target); watchForKill(target)
-            task.wait(0.88); flickInProgress = false
+            task.wait(0.2); flickInProgress = false
         end)
     else
         shootFromRightHand(target); watchForKill(target)
+    end
+end
+
+--// Auto Shoot Loop (Instant and accurate when holding gun)
+local function startAutoShoot()
+    if autoShootConnection then return end
+    autoShootConnection = RunService.RenderStepped:Connect(function()
+        if not autoShootEnabled or not silentAimEnabled then return end
+        local char = localPlayer.Character
+        if not char then return end
+        
+        local gun = char:FindFirstChild("Gun") or char:FindFirstChild("Revolver")
+        if not gun then
+            local bp = localPlayer:FindFirstChild("Backpack")
+            if bp then
+                gun = bp:FindFirstChild("Gun") or bp:FindFirstChild("Revolver")
+                local hum = char:FindFirstChildOfClass("Humanoid")
+                if gun and hum then
+                    pcall(function() hum:EquipTool(gun) end)
+                end
+            end
+        end
+        
+        if char:FindFirstChild("Gun") or char:FindFirstChild("Revolver") then
+            local target = selectTarget()
+            if target then
+                pcall(doSilentShoot)
+            end
+        end
+    end)
+end
+
+local function stopAutoShoot()
+    if autoShootConnection then
+        autoShootConnection:Disconnect()
+        autoShootConnection = nil
     end
 end
 
@@ -575,9 +612,9 @@ if hookmetamethod and getnamecallmethod and checkcaller then
                 flickInProgress = true
                 local orig = self
                 task.delay(0, function()
-                    flickCamera(); task.wait(0.1)
+                    flickCamera(); task.wait(0.05)
                     pcall(function() oldNamecall(orig, CFrame.new(rightHand.Position), CFrame.new(predicted)) end)
-                    watchForKill(target); task.wait(0.9); flickInProgress = false
+                    watchForKill(target); task.wait(0.2); flickInProgress = false
                 end)
                 return
             end
@@ -852,25 +889,25 @@ local autoKillAllDelay   = 0.2
 local function isMurderer()
     if murdererCache == localPlayer then return true end
     local character = localPlayer.Character
-    if character and character:FindFirstChild("Knife") then return true end
+    if character and (character:FindFirstChild("Knife") or character:FindFirstChild("Blade")) then return true end
     local bp = localPlayer:FindFirstChild("Backpack")
-    if bp and bp:FindFirstChild("Knife") then return true end
+    if bp and (bp:FindFirstChild("Knife") or bp:FindFirstChild("Blade")) then return true end
     return false
 end
 
 local function getKnifeWithChar()
     local character = localPlayer.Character
     if not character then return nil end
-    local knife = character:FindFirstChild("Knife")
+    local knife = character:FindFirstChild("Knife") or character:FindFirstChild("Blade")
     if knife then return knife, character end
     local bp = localPlayer:FindFirstChild("Backpack")
-    bp = bp and bp:FindFirstChild("Knife")
+    bp = bp and (bp:FindFirstChild("Knife") or bp:FindFirstChild("Blade"))
     local hum = character:FindFirstChildOfClass("Humanoid")
     if bp and hum then
         hum:EquipTool(bp)
         task.wait(0.1)
         local c2 = localPlayer.Character
-        return c2 and c2:FindFirstChild("Knife"), c2
+        return (c2 and (c2:FindFirstChild("Knife") or c2:FindFirstChild("Blade"))), c2
     end
     return nil
 end
@@ -937,9 +974,30 @@ local function stopAutoKillAll()
 end
 
 --// ============================================================
---// UTILITIES — FLING (Net Owner + Velocity Spoof + Murderer/Sheriff/Hero support)
+--// UTILITIES — FLING (Auto Ping-Based Prediction Added)
 --// ============================================================
 local flingInProgress = false
+
+-- ฟังก์ชันคำนวณค่า Prediction อัตโนมัติตาม Ping ของผู้เล่น
+local function getPingPredictionFactor()
+    local ping = 0
+    pcall(function()
+        -- ดึงค่า Network Ping ปัจจุบัน (หน่วยเป็นวินาที แปลงเป็นมิลลิวินาที)
+        ping = localPlayer:GetNetworkPing() * 1000
+    end)
+    if ping == 0 or not ping then
+        -- เผื่อกรณีดึงค่าไม่ได้ ให้ใช้ Network Stats แทน
+        pcall(function()
+            ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
+        end)
+    end
+    if not ping or ping < 10 then ping = 50 end -- ค่าสำรองพื้นฐาน
+    
+    -- สูตรคำนวณชดเชยตำแหน่งล่วงหน้าตามความหน่วง Ping (ยิ่งปิงเยอะ ยิ่งดักหน้าไกลขึ้น)
+    -- ตัวอย่าง: Ping 50ms = 1.0x, Ping 200ms = ~1.6x
+    local factor = math.clamp(1 + (ping / 300), 1.0, 2.5)
+    return factor
+end
 
 local function flingPlayer(target)
     if flingInProgress or not target then return end
@@ -953,6 +1011,8 @@ local function flingPlayer(target)
     local tChar = target.Character; if not tChar then return end
     local tHum = tChar:FindFirstChildOfClass("Humanoid")
     local tRoot = tHum and tHum.RootPart
+    
+    local chestPart = tChar:FindFirstChild("UpperTorso") or tChar:FindFirstChild("Torso") or tRoot
     local head = tChar:FindFirstChild("Head")
     local acc = tChar:FindFirstChildOfClass("Accessory"); acc = acc and acc:FindFirstChild("Handle")
 
@@ -979,43 +1039,41 @@ local function flingPlayer(target)
         return
     end
 
-    local function setCF(part, offset, rot)
-        local cf = CFrame.new(part.Position) * offset * rot
-        rootPart.CFrame = cf
-        pcall(function() character:SetPrimaryPartCFrame(cf) end)
-        rootPart.Velocity = Vector3.new(9.99e9, 9.99e9, 9.99e9)
-        rootPart.RotVelocity = Vector3.new(9.99e9, 9.99e9, 9.99e9)
-        pcall(function()
-            part.Velocity = Vector3.new(9.99e9, 9.99e9, 9.99e9)
-            part.RotVelocity = Vector3.new(9.99e9, 9.99e9, 9.99e9)
-        end)
-    end
-
     local function doFling(targetPart)
-        local endTime = tick() + 2.5
-        local rot = 0
-        while true do
-            if rootPart and tHum then
-                local vel = targetPart.Velocity.Magnitude
-                if vel < 40 then
-                    rot += 120
-                    for _ = 1, 4 do
-                        local md = tHum.MoveDirection * vel / 1.25
-                        setCF(targetPart, CFrame.new(0, 1.5, 0) + md, CFrame.Angles(math.rad(rot), 0, 0))
-                        task.wait()
-                        setCF(targetPart, CFrame.new(0, -1.5, 0) + md, CFrame.Angles(math.rad(rot), 0, 0))
-                        task.wait()
-                    end
-                else
-                    local md = tHum.MoveDirection; local ws = tHum.WalkSpeed
-                    setCF(targetPart, CFrame.new(md.X * ws * 0.12, 3, md.Z * ws * 0.12), CFrame.Angles(math.pi/2, 0, 0))
-                    rootPart.Velocity = Vector3.new(9.99e9, 9.99e9, 9.99e9); task.wait()
-                    setCF(targetPart, CFrame.new(-md.X * ws * 0.06, -3, -md.Z * ws * 0.06), CFrame.Angles(0, 0, 0))
-                    rootPart.Velocity = Vector3.new(9.99e9, 9.99e9, 9.99e9); task.wait()
-                end
-                if not (endTime < tick()) then continue end
-            end
-            break
+        local endTime = tick() + 2.0
+        while tick() < endTime and rootPart and targetPart and targetPart.Parent do
+            local currentChest = chestPart or targetPart
+            
+            -- คำนวณความเร็วทิศทางการเคลื่อนที่ของเป้าหมาย (Velocity) + ค่าชดเชยตาม Ping ของเรา
+            local targetVel = Vector3.zero
+            pcall(function()
+                targetVel = currentChest.AssemblyLinearVelocity or currentChest.Velocity
+            end)
+            
+            local pingFactor = getPingPredictionFactor()
+            -- นำตำแหน่งปัจจุบัน บวกกับทิศทางการวิ่งที่ถูกคูณด้วยความเร็วและค่า Ping Prediction
+            local predictedPos = currentChest.Position + (targetVel * 0.08 * pingFactor)
+            
+            local cfUp = CFrame.new(predictedPos + Vector3.new(0, 2, 0))
+            local cfDown = CFrame.new(predictedPos + Vector3.new(0, -25, 0))
+
+            rootPart.CFrame = cfUp
+            rootPart.Velocity = Vector3.new(9.99e9, -9.99e9, 9.99e9)
+            rootPart.RotVelocity = Vector3.new(9.99e9, 0, 9.99e9)
+            pcall(function()
+                currentChest.Velocity = Vector3.new(9.99e9, -9.99e9, 9.99e9)
+                currentChest.RotVelocity = Vector3.new(9.99e9, 0, 9.99e9)
+            end)
+            RunService.Heartbeat:Wait()
+
+            rootPart.CFrame = cfDown
+            rootPart.Velocity = Vector3.new(9.99e9, -9.99e9, 9.99e9)
+            rootPart.RotVelocity = Vector3.new(9.99e9, 0, 9.99e9)
+            pcall(function()
+                currentChest.Velocity = Vector3.new(9.99e9, -9.99e9, 9.99e9)
+                currentChest.RotVelocity = Vector3.new(9.99e9, 0, 9.99e9)
+            end)
+            RunService.Heartbeat:Wait()
         end
     end
 
@@ -1024,8 +1082,10 @@ local function flingPlayer(target)
     local bv = Instance.new("BodyVelocity")
     bv.Velocity = Vector3.zero; bv.MaxForce = Vector3.new(9e9, 9e9, 9e9); bv.Parent = rootPart
     humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
-    tRoot = tRoot or head or acc
-    if tRoot then doFling(tRoot) end
+    
+    local targetToUse = chestPart or tRoot or head or acc
+    if targetToUse then doFling(targetToUse) end
+    
     bv:Destroy()
     humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, true)
     workspace.CurrentCamera.CameraSubject = humanoid
@@ -1094,11 +1154,55 @@ local function flingMurderer()
     end
 end
 
+--// Fling Sheriff พร้อมระบบสลับเป้าหมายเมื่อคนแรกตาย + Auto Ping Prediction
 local function flingSheriff()
     if flingInProgress then return end
     local s = getSheriffPlayer()
     if s then
-        task.spawn(flingPlayer, s)
+        task.spawn(function()
+            local diedConn
+            local isDead = false
+            local hum = s.Character and s.Character:FindFirstChildOfClass("Humanoid")
+            if hum then
+                diedConn = hum.Died:Connect(function()
+                    isDead = true
+                end)
+            end
+            
+            -- ทำการ Fling Sheriff คนแรก
+            flingPlayer(s)
+            
+            if diedConn then diedConn:Disconnect() end
+            
+            local char = s.Character
+            local currentHum = char and char:FindFirstChildOfClass("Humanoid")
+            local deadConfirmed = isDead or (not currentHum or currentHum.Health <= 0)
+            
+            if deadConfirmed and not hasGunOrRevolver(localPlayer) then
+                local newSheriff = nil
+                for _, p in ipairs(Players:GetPlayers()) do
+                    if p ~= localPlayer and p ~= s then
+                        if hasGunOrRevolver(p) then
+                            newSheriff = p
+                            break
+                        end
+                    end
+                end
+                
+                if newSheriff then
+                    sheriffCache = newSheriff
+                    pcall(function()
+                        Library:Notify({ Title = "New Sheriff Detected!", Content = newSheriff.Name .. " has the gun! Flinging new sheriff...", Duration = 3 })
+                    end)
+                    task.wait(0.2)
+                    flingPlayer(newSheriff)
+                else
+                    pcall(function()
+                        Library:Notify({ Title = "Fling Sheriff", Content = "Sheriff died, but no new gun holder found yet.", Duration = 2 })
+                    end)
+                end
+            end
+        end)
     else
         pcall(function()
             Library:Notify({ Title = "Fling Sheriff", Content = "Sheriff not found in role set yet!", Duration = 2 })
@@ -1170,7 +1274,7 @@ local function startAntiFling()
         local char = localPlayer.Character
         if not char then return end
         local hrp = char:FindFirstChild("HumanoidRootPart")
-        local hum = char:FindFirstChildOfClass("Humanoid")
+        local hum = char:FindFirstChild("Humanoid")
         if not hrp or not hum or hum.Health <= 0 then return end
 
         antiFlingStripMovers(hrp)
@@ -1671,7 +1775,7 @@ pcall(function()
 end)
 
 --// ============================================================
---// UI — COMBAT
+--// UI — COMBAT (Added Auto Shoot Toggle)
 --// ============================================================
 local CombatGroup = Tabs.Combat:AddLeftGroupbox("Silent Aim")
 
@@ -1679,6 +1783,15 @@ CombatGroup:AddToggle("SilentAimToggle", {
     Text = "Silent Aim Enabled", Default = false,
     Tooltip = "Murderer > Sheriff > Nearest — predictive aim",
     Callback = function(v) silentAimEnabled = v end,
+})
+
+CombatGroup:AddToggle("AutoShootToggle", {
+    Text = "Auto Shoot", Default = false,
+    Tooltip = "Automatically fires instantly when holding a gun and target is in range",
+    Callback = function(v)
+        autoShootEnabled = v
+        if v then startAutoShoot() else stopAutoShoot() end
+    end,
 })
 
 CombatGroup:AddDropdown("SilentAimMethod", {
@@ -1877,7 +1990,7 @@ KillGroup:AddSlider("AutoKillAllDelay", {
     Callback = function(v) autoKillAllDelay = v end,
 })
 
---// Fling + Anti-Fling (Updated with Murderer, Sheriff, Hero buttons)
+--// Fling + Anti-Fling
 UtilRight:AddButton("Fling Murderer", flingMurderer)
 UtilRight:AddButton("Fling Sheriff", flingSheriff)
 UtilRight:AddButton("Fling Hero", flingHero)
@@ -1886,7 +1999,7 @@ UtilRight:AddDivider()
 
 UtilRight:AddToggle("AntiFlingToggle", {
     Text = "Anti Fling", Default = false,
-    Tooltip = "Protects you from being flung by other cheaters (resets velocity / strips injected movers / kills sit-state)",
+    Tooltip = "Protects you from being flung by other cheaters",
     Callback = function(v)
         antiFlingEnabled = v
         if v then startAntiFling() else stopAntiFling() end
@@ -1983,6 +2096,7 @@ MenuGroup:AddButton("Unload", function()
     desyncSetEnabled(false)
     stopAutoKillAll()
     stopGrabGunWatcher()
+    stopAutoShoot()
     if stopAntiFling then stopAntiFling() end
     pcall(function() floatGui:Destroy() end)
     Library:Unload()
