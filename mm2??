@@ -77,7 +77,7 @@ if not floatGui.Parent then floatGui.Parent = playerGui end
 
 local floatBtn = Instance.new("TextButton")
 floatBtn.Name = "ShootButton"
-floatBtn.Size = UDim2.new(0, 120, 0, 85)
+floatBtn.Size = UDim2.new(0, 125, 0, 95)
 floatBtn.Position = UDim2.new(0.85, 0, 0.6, 0)
 floatBtn.AnchorPoint = Vector2.new(0.5, 0.5)
 floatBtn.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
@@ -89,7 +89,7 @@ floatBtn.AutoButtonColor = false
 floatBtn.Parent = floatGui
 
 local corner = Instance.new("UICorner")
-corner.CornerRadius = UDim.new(0, 5)
+corner.CornerRadius = UDim.new(0, 10)
 corner.Parent = floatBtn
 
 local stroke = Instance.new("UIStroke")
