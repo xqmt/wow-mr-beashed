@@ -529,7 +529,7 @@ do
                             lib = loadstring(game:HttpGet("https://raw.githubusercontent.com/riqegopeek/NeverLose/refs/heads/main/src/interface.luau"))()
                             lib:Theme("white")
                             do
-                                local oxyWindow = lib:AddWindow("wind", "wind")
+                                local oxyWindow = lib:AddWindow("fallen", "beta")
                                 local combat = oxyWindow:AddTab("combat", "rbxassetid://10734951847")
                                 local visual2 = oxyWindow:AddTab("visual", "rbxassetid://10723346959")
                                 local misc2 = oxyWindow:AddTab("misc", "rbxassetid://10709797985")
@@ -638,7 +638,7 @@ do
                                     UIPadding.PaddingTop = createUDim(0, fifthInput and 6 or 0)
                                     UIPadding.PaddingBottom = createUDim(0, fifthInput and 6 or 0)
                                     createGuiInstance("UICorner", {
-                                        CornerRadius = createUDim(0, 3),
+                                        CornerRadius = createUDim(0, 5),
                                         Parent = candidateValue,
                                     })
                                     local UIStroke = createGuiInstance("UIStroke", {
