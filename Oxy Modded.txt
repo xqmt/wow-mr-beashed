@@ -529,8 +529,8 @@ do
                             lib = loadstring(game:HttpGet("https://raw.githubusercontent.com/riqegopeek/NeverLose/refs/heads/main/src/interface.luau"))()
                             lib:Theme("white")
                             do
-                                local oxyWindow = lib:AddWindow("fallen", "beta")
-                                local combat = oxyWindow:AddTab("combat", "rbxassetid://10734951847")
+                                local oxyWindow = lib:AddWindow("372", "beta")
+                       local combat = oxyWindow:AddTab("combat", "rbxassetid://10734951847")
                                 local visual2 = oxyWindow:AddTab("visual", "rbxassetid://10723346959")
                                 local misc2 = oxyWindow:AddTab("misc", "rbxassetid://10709797985")
                                 fflagsTab = oxyWindow:AddTab("fflags", "rbxassetid://10723364435")
