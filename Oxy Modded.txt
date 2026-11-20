@@ -166,6 +166,8 @@ do
                                         antilag = false,
                                         no_render = false,
                                         device_spoof_type = "PC",
+                                        ability_esp_icon = true,
+                                        ability_esp_cooldown = true,
                                     }
                                     configStorage.path = configStorage.folder .. "/config.json"
                                     configStorage.fflag_folder = configStorage.folder .. "/fflags"
@@ -528,20 +530,20 @@ do
                             end)
                             lib = loadstring(game:HttpGet("https://raw.githubusercontent.com/riqegopeek/NeverLose/refs/heads/main/src/interface.luau"))()
                             lib:Theme("white")
-                            do
-                                local oxyWindow = lib:AddWindow("372", "beta")
-                       local combat = oxyWindow:AddTab("combat", "rbxassetid://10734951847")
-                                local visual2 = oxyWindow:AddTab("visual", "rbxassetid://10723346959")
-                                local misc2 = oxyWindow:AddTab("misc", "rbxassetid://10709797985")
-                                fflagsTab = oxyWindow:AddTab("fflags", "rbxassetid://10723364435")
-                                parrySection = combat:AddSection("parry", "left")
-                                curve = combat:AddSection("curve", "right")
-                                spam = combat:AddSection("spam", "left")
-                                hotkeys = combat:AddSection("hotkeys", "right")
-                                visual = visual2:AddSection("visual", "left")
-                                misc = misc2:AddSection("misc", "left")
-                            end
+                       do
+                           local oxyWindow = lib:AddWindow("forever", "v1.1.4")
+                           local combat = oxyWindow:AddTab("combat", "rbxassetid://10734951847")
+                           visual2 = oxyWindow:AddTab("visual", "rbxassetid://10723346959")  -- ลบ local
+                           misc2 = oxyWindow:AddTab("misc", "rbxassetid://10709797985")      -- ลบ local
+                           fflagsTab = oxyWindow:AddTab("fflags", "rbxassetid://10723364435")
+                           parrySection = combat:AddSection("parry", "left")
+                           curve = combat:AddSection("curve", "right")
+                           spam = combat:AddSection("spam", "left")
+                           hotkeys = combat:AddSection("hotkeys", "right")
+                           visual = visual2:AddSection("visual", "left")
+                           misc = misc2:AddSection("misc", "left")
                         end
+                    end
                         local profile, fflagsSection, profileNameInput, flagsJsonInput
                         do
                             do
@@ -638,7 +640,7 @@ do
                                     UIPadding.PaddingTop = createUDim(0, fifthInput and 6 or 0)
                                     UIPadding.PaddingBottom = createUDim(0, fifthInput and 6 or 0)
                                     createGuiInstance("UICorner", {
-                                        CornerRadius = createUDim(0, 5),
+                                        CornerRadius = createUDim(0, 3),
                                         Parent = candidateValue,
                                     })
                                     local UIStroke = createGuiInstance("UIStroke", {
@@ -1411,16 +1413,222 @@ do
                                 until_at = 0,
                                 accuracy = 1.5,
                             }
+
+                            -- ═══════════════════════════════════════════════════════════
+                            -- ABILITY ESP (Icon + Cooldown + READY indicator)
+                            -- ═══════════════════════════════════════════════════════════
                             abilityEspState = {
-                                labels = {
-                                },
+                                labels = {},
+                                running = false,
+                                active_task = nil,
+                                respawn_conns = {},
                             }
+
+                            local DataAbilities = ReplicatedStorage:WaitForChild("Misc"):WaitForChild("DataAbilities")
+
+                            abilityEspState.remove_player = function(self, player)
+                                local gui = self.labels[player]
+                                if gui then
+                                    pcall(function() gui:Destroy() end)
+                                    self.labels[player] = nil
+                                end
+                            end
+
+                            abilityEspState.detach_respawn = function(self, player)
+                                local conn = self.respawn_conns[player]
+                                if conn then
+                                    pcall(function() conn:Disconnect() end)
+                                    self.respawn_conns[player] = nil
+                                end
+                            end
+
+                            abilityEspState.attach_player = function(self, player)
+                                if player == localPlayer then return end
+                                self:remove_player(player)
+
+                                local char = player.Character
+                                if not char then
+                                    local ok, result = pcall(function() return player.CharacterAdded:Wait() end)
+                                    if not ok or not self.running then return end
+                                    char = result
+                                end
+                                if not self.running then return end
+
+                                local head = char:WaitForChild("Head", 5)
+                                if not head or not self.running then return end
+
+                                local sGui = (gethui and gethui()) or localPlayer:WaitForChild("PlayerGui")
+
+                                local BGui = createInstance("BillboardGui")
+                                BGui.Name = "Oxy_AbilityESP"
+                                BGui.AlwaysOnTop = true
+                                BGui.Size = createUDim2(0, 140, 0, 40)
+                                BGui.StudsOffset = createVector3(0, 3.0, 0)
+                                BGui.Adornee = head
+                                BGui.Parent = sGui
+                                self.labels[player] = BGui
+
+                                local Icon = createInstance("ImageLabel")
+                                Icon.Size = fromOffset(26, 26)
+                                Icon.Position = fromOffset(5, 7)
+                                Icon.BackgroundTransparency = 1
+                                Icon.Image = "rbxassetid://3944703587"
+                                Icon.Parent = BGui
+
+                                local StatusLbl = createInstance("TextLabel")
+                                StatusLbl.BackgroundTransparency = 1
+                                StatusLbl.Size = fromOffset(95, 14)
+                                StatusLbl.Position = fromOffset(36, 5)
+                                StatusLbl.Text = "NONE"
+                                StatusLbl.TextColor3 = colorFromRGB(255, 255, 255)
+                                StatusLbl.TextSize = 10
+                                StatusLbl.Font = Enum.Font.GothamBold
+                                StatusLbl.TextXAlignment = Enum.TextXAlignment.Left
+                                StatusLbl.TextStrokeTransparency = 0
+                                StatusLbl.Parent = BGui
+
+                                local ReadyLbl = createInstance("TextLabel")
+                                ReadyLbl.BackgroundTransparency = 1
+                                ReadyLbl.Size = fromOffset(95, 14)
+                                ReadyLbl.Position = fromOffset(36, 18)
+                                ReadyLbl.Text = "READY"
+                                ReadyLbl.TextColor3 = colorFromRGB(80, 220, 120)
+                                ReadyLbl.TextSize = 10
+                                ReadyLbl.Font = Enum.Font.GothamBlack
+                                ReadyLbl.TextXAlignment = Enum.TextXAlignment.Left
+                                ReadyLbl.TextStrokeTransparency = 0
+                                ReadyLbl.Parent = BGui
+
+                                spawnTask(function()
+                                    while BGui and BGui.Parent and self.running do
+                                        pcall(function()
+                                            local liveChar = player.Character
+                                            if not liveChar then return end
+
+                                            local liveHead = liveChar:FindFirstChild("Head")
+                                            if liveHead and BGui.Adornee ~= liveHead then
+                                                BGui.Adornee = liveHead
+                                            end
+
+                                            local rawAbility = player:GetAttribute("EquippedAbility") or player:GetAttribute("Ability") or "None"
+                                            StatusLbl.Text = string.upper(tostring(rawAbility))
+
+                                            if config.ability_esp_icon ~= false then
+                                                local abilityFolder = DataAbilities:FindFirstChild(tostring(rawAbility))
+                                                if abilityFolder then
+                                                    local assetIcon = abilityFolder:GetAttribute("Icon") or abilityFolder:GetAttribute("Icon1")
+                                                    Icon.Image = (assetIcon and assetIcon ~= "") and assetIcon or "rbxassetid://3944703587"
+                                                else
+                                                    Icon.Image = "rbxassetid://3944703587"
+                                                end
+                                            end
+
+                                            if config.ability_esp_cooldown ~= false then
+                                                local abActive  = liveChar:GetAttribute("AbilityActive") == true
+                                                local cdActive  = liveChar:GetAttribute("CooldownActive") == true
+                                                local cdExpiry  = player:GetAttribute("CooldownExpiration")
+                                                local cdExpired = cdExpiry and Workspace:GetServerTimeNow() < cdExpiry
+                                                local isReady   = not (abActive or cdActive or cdExpired)
+
+                                                if isReady then
+                                                    ReadyLbl.Text       = "READY"
+                                                    ReadyLbl.TextColor3 = colorFromRGB(80, 220, 120)
+                                                else
+                                                    local cdDiff = cdExpiry and (cdExpiry - Workspace:GetServerTimeNow()) or 0
+                                                    ReadyLbl.Text       = cdDiff > 0 and string.format("%.1fS", cdDiff) or "COOLDOWN"
+                                                    ReadyLbl.TextColor3 = colorFromRGB(220, 100, 80)
+                                                end
+                                            end
+                                        end)
+                                        waitTask(0.2)
+                                    end
+                                    pcall(function()
+                                        if BGui and BGui.Parent then BGui:Destroy() end
+                                    end)
+                                    if self.labels[player] == BGui then
+                                        self.labels[player] = nil
+                                    end
+                                end)
+                            end
+
+                            abilityEspState.hook_respawn = function(self, player)
+                                self:detach_respawn(player)
+                                self.respawn_conns[player] = player.CharacterAdded:Connect(function()
+                                    if not self.running then return end
+                                    delayTask(0.3, function()
+                                        if self.running then
+                                            spawnTask(function() self:attach_player(player) end)
+                                        end
+                                    end)
+                                end)
+                            end
+
+                            abilityEspState.set = function(self, on)
+                                self.running = false
+
+                                if self.active_task then
+                                    pcall(function() task.cancel(self.active_task) end)
+                                    self.active_task = nil
+                                end
+
+                                for player in pairs(self.respawn_conns) do
+                                    self:detach_respawn(player)
+                                end
+                                clearTable(self.respawn_conns)
+
+                                for player in pairs(self.labels) do
+                                    self:remove_player(player)
+                                end
+                                clearTable(self.labels)
+
+                                if not on then return end
+
+                                self.running = true
+
+                                self.active_task = spawnTask(function()
+                                    for _, p in ipairs(Players:GetPlayers()) do
+                                        if p ~= localPlayer then
+                                            self:hook_respawn(p)
+                                            spawnTask(function() self:attach_player(p) end)
+                                        end
+                                    end
+
+                                    local connAdded = Players.PlayerAdded:Connect(function(p)
+                                        if not self.running or p == localPlayer then return end
+                                        self:hook_respawn(p)
+                                        spawnTask(function() self:attach_player(p) end)
+                                    end)
+
+                                    local connRemoving = Players.PlayerRemoving:Connect(function(p)
+                                        self:detach_respawn(p)
+                                        self:remove_player(p)
+                                    end)
+
+                                    while self.running do
+                                        waitTask(0.5)
+                                    end
+
+                                    pcall(function() connAdded:Disconnect() end)
+                                    pcall(function() connRemoving:Disconnect() end)
+
+                                    for player in pairs(self.respawn_conns) do
+                                        self:detach_respawn(player)
+                                    end
+                                    clearTable(self.respawn_conns)
+                                    for player in pairs(self.labels) do
+                                        self:remove_player(player)
+                                    end
+                                    clearTable(self.labels)
+                                end)
+                            end
+
                             triggerbotState = {
                                 on = false,
                                 busy = false,
                                 key = Enum.KeyCode.T,
                                 button = nil,
                             }
+
                             ballState.curved = function(inputValue)
                                 local primaryValue = inputValue or ballState.get()
                                 if primaryValue then
@@ -1544,72 +1752,7 @@ do
                             for _, primaryValue in balls:GetChildren() do
                                 ballState.bind(primaryValue)
                             end
-                            abilityEspState.init = function()
-                                local function createTextInput(inputValue)
-                                    local character = inputValue.Character
-                                    while not character or not character.Parent do
-                                        waitTask()
-                                        character = inputValue.Character
-                                    end
-                                    local head = character:WaitForChild("Head")
-                                    local BillboardGui = createGuiInstance("BillboardGui", {
-                                        Adornee = head,
-                                        Size = createUDim2(0, 200, 0, 50),
-                                        StudsOffset = createVector3(0, 3, 0),
-                                        AlwaysOnTop = true,
-                                        Parent = head,
-                                    })
-                                    local TextLabel = createGuiInstance("TextLabel", {
-                                        Size = createUDim2(1, 0, 1, 0),
-                                        TextColor3 = colorFromRGB(255, 255, 255),
-                                        TextSize = 10,
-                                        TextWrapped = false,
-                                        BackgroundTransparency = 1,
-                                        TextXAlignment = Enum.TextXAlignment.Center,
-                                        TextYAlignment = Enum.TextYAlignment.Center,
-                                        Parent = BillboardGui,
-                                    })
-                                    abilityEspState.labels[inputValue] = TextLabel
-                                    local humanoid = character:FindFirstChild("Humanoid")
-                                    if humanoid then
-                                        humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
-                                    end
-                                    local function updateAbilityLabel()
-                                        local attribute = inputValue:GetAttribute("EquippedAbility")
-                                        TextLabel.Text = attribute and inputValue.DisplayName .. " [" .. attribute .. "]" or inputValue.DisplayName
-                                        TextLabel.Visible = config.ability_esp or false
-                                    end
-                                    updateAbilityLabel()
-                                    local connection = inputValue:GetAttributeChangedSignal("EquippedAbility"):Connect(updateAbilityLabel)
-                                    local connection2 = nil
-                                    connection2 = heartbeat:Connect(function()
-                                        if not character or not character.Parent then
-                                            connection2:Disconnect()
-                                            if connection then
-                                                connection:Disconnect()
-                                            end
-                                            BillboardGui:Destroy()
-                                            abilityEspState.labels[inputValue] = nil
-                                            return
-                                        end
-                                        TextLabel.Visible = config.ability_esp or false
-                                    end)
-                                end
-                                for _, primaryValue in Players:GetPlayers() do
-                                    if primaryValue ~= localPlayer then
-                                        primaryValue.CharacterAdded:Connect(function()
-                                            createTextInput(primaryValue)
-                                        end)
-                                        createTextInput(primaryValue)
-                                    end
-                                end
-                                Players.PlayerAdded:Connect(function(player)
-                                    player.CharacterAdded:Connect(function()
-                                        createTextInput(player)
-                                    end)
-                                end)
-                            end
-                            abilityEspState.init()
+                            abilityEspState:set(config.ability_esp or false)
                             parryState.check = function()
                                 if triggerbotState.busy then
                                     return
@@ -2275,14 +2418,9 @@ do
                         end)
                         visual:AddToggle("ability esp", config.ability_esp or false, function(abilityEsp)
                             config.ability_esp = abilityEsp
-                            for k, primaryValue in abilityEspState.labels, nil, nil do
-                                if primaryValue and primaryValue.Parent then
-                                    local attribute = k:GetAttribute("EquippedAbility")
-                                    primaryValue.Text = attribute and k.DisplayName .. " [" .. attribute .. "]" or k.DisplayName
-                                    primaryValue.Visible = abilityEsp
-                                end
-                            end
+                            abilityEspState:set(abilityEsp)
                         end)
+
                         do
                             local inventoryUnlockManager = {
                                 enabled = config.unlock_all or false,
@@ -3914,7 +4052,7 @@ do
                     end
                     do
                         local deviceSpoofDropdown, deviceSpoofButton
-                        local deviceSpoofTab = misc:AddSection("device spoof", "left")
+                        local deviceSpoofTab = misc2:AddSection("device spoof", "left")
                         deviceSpoofDropdown = deviceSpoofTab:AddDropdown("device", {"PC", "Mobile", "Console"}, config.device_spoof_type or "PC", function(device)
                             config.device_spoof_type = device
                             configStorage.save()
