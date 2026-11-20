@@ -32,6 +32,7 @@ local Cfg = {
 	Radius = 14,
 	VelocitySpeed = 350,
 	CamSmoothSpeed = 24,
+	CamHeightOffset = 1.6,
 	VisualizerSmoothSpeed = 18,
 	StepInterval = 0.08,
 }
@@ -90,7 +91,7 @@ VisualizerImage.AnchorPoint = Vector2.new(0.5, 0.5)
 VisualizerImage.Position = UDim2.fromScale(0.5, 0.5)
 VisualizerImage.BackgroundTransparency = 1
 VisualizerImage.Image = VISUALIZER_IMAGE_ID
-VisualizerImage.ImageColor3 = Color3.fromRGB(244, 244, 245)
+VisualizerImage.ImageColor3 = Color3.fromRGB(255, 182, 193)
 VisualizerImage.ImageTransparency = (Cfg.ShowVisualizer and Cfg.ImmortalV1) and 0 or 1
 VisualizerImage.ScaleType = Enum.ScaleType.Fit
 VisualizerImage.Parent = VisualizerBillboard
@@ -177,11 +178,11 @@ local function SetDesiredTarget(pos, stepIndex)
 
 		local targetColor
 		if stepIndex == 0 then
-			targetColor = Color3.fromRGB(255, 255, 255)
+			targetColor = Color3.fromRGB(255, 182, 193)
 		elseif stepIndex == 1 then
-			targetColor = Color3.fromRGB(161, 161, 170)
+			targetColor = Color3.fromRGB(244, 114, 182)
 		else
-			targetColor = Color3.fromRGB(212, 212, 216)
+			targetColor = Color3.fromRGB(251, 113, 133)
 		end
 
 		if VisualizerImage then
@@ -194,6 +195,10 @@ local function SetDesiredTarget(pos, stepIndex)
 			visColorTween:Play()
 		end
 	end
+end
+
+local function GetCamAnchorPos(basePos)
+	return basePos + Vector3.new(0, Cfg.CamHeightOffset, 0)
 end
 
 local function SyncFakeCamera(dt)
@@ -211,7 +216,7 @@ local function SyncFakeCamera(dt)
 		return
 	end
 
-	local anchorPos = lastFakePos or hrp.Position
+	local anchorPos = GetCamAnchorPos(lastFakePos or hrp.Position)
 	local camAlpha = 1 - math.exp(-Cfg.CamSmoothSpeed * math.clamp(dt or 0.016, 0, 0.1))
 	ImmortalCamAnchor.CFrame = CFrame.new(ImmortalCamAnchor.Position:Lerp(anchorPos, camAlpha))
 
@@ -293,7 +298,7 @@ local function StepImmortalV1()
 	lastFakePos = baseCF.Position
 
 	if ImmortalCamAnchor and ImmortalCamAnchor.Parent then
-		ImmortalCamAnchor.CFrame = CFrame.new(baseCF.Position)
+		ImmortalCamAnchor.CFrame = CFrame.new(GetCamAnchorPos(baseCF.Position))
 	end
 	if cam.CameraSubject ~= ImmortalCamAnchor then
 		cam.CameraSubject = ImmortalCamAnchor
@@ -352,7 +357,7 @@ local charAddedConn = LP.CharacterAdded:Connect(function()
 	if shared._ImmortalV1Running and Cfg.ImmortalV1 then
 		local hrp = GetHRP(GetChar())
 		if hrp and ImmortalCamAnchor and ImmortalCamAnchor.Parent then
-			ImmortalCamAnchor.CFrame = CFrame.new(hrp.Position)
+			ImmortalCamAnchor.CFrame = CFrame.new(GetCamAnchorPos(hrp.Position))
 			lastFakePos = hrp.Position
 		end
 		UpdateVisualizerVisibility()
@@ -372,7 +377,7 @@ local function SetImmortalV1(enabled)
 		local hrp = GetHRP(GetChar())
 		if hrp and ImmortalCamAnchor and ImmortalCamAnchor.Parent then
 			lastFakePos = hrp.Position
-			ImmortalCamAnchor.CFrame = CFrame.new(hrp.Position)
+			ImmortalCamAnchor.CFrame = CFrame.new(GetCamAnchorPos(hrp.Position))
 		end
 		UpdateVisualizerVisibility()
 	end
@@ -436,6 +441,36 @@ local function AddGradient(parent, colorSequence, rotation)
 	return grad
 end
 
+-- ================= ROSE AESTHETIC PALETTE =================
+local RosePalette = {
+	MainBgStart = Color3.fromRGB(16, 8, 12),
+	MainBgMid = Color3.fromRGB(30, 14, 22),
+	MainBgEnd = Color3.fromRGB(10, 5, 8),
+
+	BorderStart = Color3.fromRGB(255, 182, 193),
+	BorderMid = Color3.fromRGB(190, 24, 93),
+	BorderEnd = Color3.fromRGB(251, 113, 133),
+
+	RowStart = Color3.fromRGB(24, 11, 17),
+	RowEnd = Color3.fromRGB(49, 18, 32),
+	RowStroke = Color3.fromRGB(244, 114, 182),
+
+	TitleStart = Color3.fromRGB(255, 228, 236),
+	TitleMid = Color3.fromRGB(251, 113, 133),
+	TitleEnd = Color3.fromRGB(219, 39, 119),
+
+	RoseSoft = Color3.fromRGB(255, 182, 193),
+	RoseBright = Color3.fromRGB(251, 113, 133),
+	RoseDeep = Color3.fromRGB(225, 29, 72),
+	RoseMuted = Color3.fromRGB(216, 160, 180),
+	OffTrackStart = Color3.fromRGB(38, 18, 28),
+	OffTrackEnd = Color3.fromRGB(76, 29, 50),
+	OffKnob = Color3.fromRGB(190, 120, 145),
+	OffDot = Color3.fromRGB(120, 40, 65),
+	BtnBg = Color3.fromRGB(33, 14, 24),
+	KnobDark = Color3.fromRGB(18, 7, 12),
+}
+
 -- ================= GUI =================
 local function CreateGUI()
 	local EXPANDED_HEIGHT = 224
@@ -466,9 +501,9 @@ local function CreateGUI()
 	Main.Parent = gui
 
 	AddGradient(Main, ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(10, 10, 12)),
-		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(22, 22, 26)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(6, 6, 8)),
+		ColorSequenceKeypoint.new(0, RosePalette.MainBgStart),
+		ColorSequenceKeypoint.new(0.5, RosePalette.MainBgMid),
+		ColorSequenceKeypoint.new(1, RosePalette.MainBgEnd),
 	}), 135)
 
 	local MainCorner = Instance.new("UICorner")
@@ -477,14 +512,14 @@ local function CreateGUI()
 
 	local MainStroke = Instance.new("UIStroke")
 	MainStroke.Color = Color3.fromRGB(255, 255, 255)
-	MainStroke.Transparency = 0.25
+	MainStroke.Transparency = 0.22
 	MainStroke.Thickness = 1.2
 	MainStroke.Parent = Main
 
 	AddGradient(MainStroke, ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
-		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(82, 82, 91)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(244, 244, 245)),
+		ColorSequenceKeypoint.new(0, RosePalette.BorderStart),
+		ColorSequenceKeypoint.new(0.5, RosePalette.BorderMid),
+		ColorSequenceKeypoint.new(1, RosePalette.BorderEnd),
 	}), 45)
 
 	local Header = Instance.new("Frame")
@@ -497,7 +532,7 @@ local function CreateGUI()
 	local Dot = Instance.new("Frame")
 	Dot.Size = UDim2.fromOffset(8, 8)
 	Dot.Position = UDim2.fromOffset(14, 13)
-	Dot.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	Dot.BackgroundColor3 = RosePalette.RoseBright
 	Dot.BorderSizePixel = 0
 	Dot.Parent = Header
 	Instance.new("UICorner", Dot).CornerRadius = UDim.new(1, 0)
@@ -514,18 +549,18 @@ local function CreateGUI()
 	Title.Parent = Header
 
 	AddGradient(Title, ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
-		ColorSequenceKeypoint.new(0.65, Color3.fromRGB(212, 212, 216)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(113, 113, 122)),
+		ColorSequenceKeypoint.new(0, RosePalette.TitleStart),
+		ColorSequenceKeypoint.new(0.6, RosePalette.TitleMid),
+		ColorSequenceKeypoint.new(1, RosePalette.TitleEnd),
 	}), 0)
 
 	local CollapseBtn = Instance.new("TextButton")
 	CollapseBtn.Name = "CollapseBtn"
 	CollapseBtn.Size = UDim2.fromOffset(24, 24)
 	CollapseBtn.Position = UDim2.new(1, -60, 0, 5)
-	CollapseBtn.BackgroundColor3 = Color3.fromRGB(24, 24, 27)
+	CollapseBtn.BackgroundColor3 = RosePalette.BtnBg
 	CollapseBtn.Text = "−"
-	CollapseBtn.TextColor3 = Color3.fromRGB(244, 244, 245)
+	CollapseBtn.TextColor3 = RosePalette.RoseSoft
 	CollapseBtn.TextSize = 15
 	CollapseBtn.Font = Enum.Font.GothamBold
 	CollapseBtn.BorderSizePixel = 0
@@ -536,9 +571,9 @@ local function CreateGUI()
 	CloseBtn.Name = "CloseBtn"
 	CloseBtn.Size = UDim2.fromOffset(24, 24)
 	CloseBtn.Position = UDim2.new(1, -32, 0, 5)
-	CloseBtn.BackgroundColor3 = Color3.fromRGB(24, 24, 27)
+	CloseBtn.BackgroundColor3 = RosePalette.BtnBg
 	CloseBtn.Text = "×"
-	CloseBtn.TextColor3 = Color3.fromRGB(244, 244, 245)
+	CloseBtn.TextColor3 = RosePalette.RoseSoft
 	CloseBtn.TextSize = 16
 	CloseBtn.Font = Enum.Font.GothamBold
 	CloseBtn.BorderSizePixel = 0
@@ -547,27 +582,27 @@ local function CreateGUI()
 
 	CollapseBtn.MouseEnter:Connect(function()
 		TweenService:Create(CollapseBtn, TweenInfo.new(0.15), {
-			BackgroundColor3 = Color3.fromRGB(255, 255, 255),
-			TextColor3 = Color3.fromRGB(10, 10, 12)
+			BackgroundColor3 = RosePalette.RoseSoft,
+			TextColor3 = RosePalette.KnobDark
 		}):Play()
 	end)
 	CollapseBtn.MouseLeave:Connect(function()
 		TweenService:Create(CollapseBtn, TweenInfo.new(0.15), {
-			BackgroundColor3 = Color3.fromRGB(24, 24, 27),
-			TextColor3 = Color3.fromRGB(244, 244, 245)
+			BackgroundColor3 = RosePalette.BtnBg,
+			TextColor3 = RosePalette.RoseSoft
 		}):Play()
 	end)
 
 	CloseBtn.MouseEnter:Connect(function()
 		TweenService:Create(CloseBtn, TweenInfo.new(0.15), {
-			BackgroundColor3 = Color3.fromRGB(228, 228, 231),
-			TextColor3 = Color3.fromRGB(0, 0, 0)
+			BackgroundColor3 = RosePalette.RoseDeep,
+			TextColor3 = Color3.fromRGB(255, 241, 242)
 		}):Play()
 	end)
 	CloseBtn.MouseLeave:Connect(function()
 		TweenService:Create(CloseBtn, TweenInfo.new(0.15), {
-			BackgroundColor3 = Color3.fromRGB(24, 24, 27),
-			TextColor3 = Color3.fromRGB(244, 244, 245)
+			BackgroundColor3 = RosePalette.BtnBg,
+			TextColor3 = RosePalette.RoseSoft
 		}):Play()
 	end)
 	CloseBtn.MouseButton1Click:Connect(function()
@@ -585,14 +620,14 @@ local function CreateGUI()
 	Divider.Size = UDim2.new(1, -24, 0, 1)
 	Divider.Position = UDim2.fromOffset(12, 0)
 	Divider.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-	Divider.BackgroundTransparency = 0.2
+	Divider.BackgroundTransparency = 0.15
 	Divider.BorderSizePixel = 0
 	Divider.Parent = Body
 
 	AddGradient(Divider, ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(24, 24, 27)),
-		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 255, 255)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(24, 24, 27)),
+		ColorSequenceKeypoint.new(0, RosePalette.RowStart),
+		ColorSequenceKeypoint.new(0.5, RosePalette.RoseBright),
+		ColorSequenceKeypoint.new(1, RosePalette.RowStart),
 	}), 0)
 
 	local ToggleRow = Instance.new("TextButton")
@@ -606,13 +641,13 @@ local function CreateGUI()
 	Instance.new("UICorner", ToggleRow).CornerRadius = UDim.new(0, 10)
 
 	AddGradient(ToggleRow, ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(16, 16, 18)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(39, 39, 42)),
+		ColorSequenceKeypoint.new(0, RosePalette.RowStart),
+		ColorSequenceKeypoint.new(1, RosePalette.RowEnd),
 	}), 90)
 
 	local RowStroke = Instance.new("UIStroke")
-	RowStroke.Color = Color3.fromRGB(255, 255, 255)
-	RowStroke.Transparency = 0.72
+	RowStroke.Color = RosePalette.RowStroke
+	RowStroke.Transparency = 0.68
 	RowStroke.Thickness = 1
 	RowStroke.Parent = ToggleRow
 
@@ -621,7 +656,7 @@ local function CreateGUI()
 	StatusLabel.Position = UDim2.fromOffset(12, 0)
 	StatusLabel.BackgroundTransparency = 1
 	StatusLabel.Text = "Status: ON"
-	StatusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+	StatusLabel.TextColor3 = RosePalette.TitleStart
 	StatusLabel.TextSize = 12
 	StatusLabel.Font = Enum.Font.GothamMedium
 	StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -636,14 +671,14 @@ local function CreateGUI()
 	Instance.new("UICorner", Track).CornerRadius = UDim.new(1, 0)
 
 	local TrackGrad = AddGradient(Track, ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(161, 161, 170)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255)),
+		ColorSequenceKeypoint.new(0, RosePalette.RoseBright),
+		ColorSequenceKeypoint.new(1, RosePalette.RoseSoft),
 	}), 0)
 
 	local Knob = Instance.new("Frame")
 	Knob.Size = UDim2.fromOffset(18, 18)
 	Knob.Position = UDim2.fromOffset(23, 3)
-	Knob.BackgroundColor3 = Color3.fromRGB(12, 12, 14)
+	Knob.BackgroundColor3 = RosePalette.KnobDark
 	Knob.BorderSizePixel = 0
 	Knob.Parent = Track
 	Instance.new("UICorner", Knob).CornerRadius = UDim.new(1, 0)
@@ -659,13 +694,13 @@ local function CreateGUI()
 	Instance.new("UICorner", VisRow).CornerRadius = UDim.new(0, 10)
 
 	AddGradient(VisRow, ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(16, 16, 18)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(39, 39, 42)),
+		ColorSequenceKeypoint.new(0, RosePalette.RowStart),
+		ColorSequenceKeypoint.new(1, RosePalette.RowEnd),
 	}), 90)
 
 	local VisStroke = Instance.new("UIStroke")
-	VisStroke.Color = Color3.fromRGB(255, 255, 255)
-	VisStroke.Transparency = 0.72
+	VisStroke.Color = RosePalette.RowStroke
+	VisStroke.Transparency = 0.68
 	VisStroke.Thickness = 1
 	VisStroke.Parent = VisRow
 
@@ -674,7 +709,7 @@ local function CreateGUI()
 	VisLabel.Position = UDim2.fromOffset(12, 0)
 	VisLabel.BackgroundTransparency = 1
 	VisLabel.Text = "Visualizer: ON"
-	VisLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+	VisLabel.TextColor3 = RosePalette.TitleStart
 	VisLabel.TextSize = 12
 	VisLabel.Font = Enum.Font.GothamMedium
 	VisLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -689,14 +724,14 @@ local function CreateGUI()
 	Instance.new("UICorner", VisTrack).CornerRadius = UDim.new(1, 0)
 
 	local VisTrackGrad = AddGradient(VisTrack, ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(161, 161, 170)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255)),
+		ColorSequenceKeypoint.new(0, RosePalette.RoseBright),
+		ColorSequenceKeypoint.new(1, RosePalette.RoseSoft),
 	}), 0)
 
 	local VisKnob = Instance.new("Frame")
 	VisKnob.Size = UDim2.fromOffset(18, 18)
 	VisKnob.Position = UDim2.fromOffset(23, 3)
-	VisKnob.BackgroundColor3 = Color3.fromRGB(12, 12, 14)
+	VisKnob.BackgroundColor3 = RosePalette.KnobDark
 	VisKnob.BorderSizePixel = 0
 	VisKnob.Parent = VisTrack
 	Instance.new("UICorner", VisKnob).CornerRadius = UDim.new(1, 0)
@@ -711,13 +746,13 @@ local function CreateGUI()
 	Instance.new("UICorner", RangeRow).CornerRadius = UDim.new(0, 10)
 
 	AddGradient(RangeRow, ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(16, 16, 18)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(39, 39, 42)),
+		ColorSequenceKeypoint.new(0, RosePalette.RowStart),
+		ColorSequenceKeypoint.new(1, RosePalette.RowEnd),
 	}), 90)
 
 	local RangeStroke = Instance.new("UIStroke")
-	RangeStroke.Color = Color3.fromRGB(255, 255, 255)
-	RangeStroke.Transparency = 0.72
+	RangeStroke.Color = RosePalette.RowStroke
+	RangeStroke.Transparency = 0.68
 	RangeStroke.Thickness = 1
 	RangeStroke.Parent = RangeRow
 
@@ -726,7 +761,7 @@ local function CreateGUI()
 	RangeLabel.Position = UDim2.fromOffset(12, 5)
 	RangeLabel.BackgroundTransparency = 1
 	RangeLabel.Text = "Range"
-	RangeLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+	RangeLabel.TextColor3 = RosePalette.TitleStart
 	RangeLabel.TextSize = 12
 	RangeLabel.Font = Enum.Font.GothamMedium
 	RangeLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -737,7 +772,7 @@ local function CreateGUI()
 	RangeValueLabel.Position = UDim2.new(0.65, 0, 0, 5)
 	RangeValueLabel.BackgroundTransparency = 1
 	RangeValueLabel.Text = tostring(Cfg.Radius)
-	RangeValueLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+	RangeValueLabel.TextColor3 = RosePalette.RoseSoft
 	RangeValueLabel.TextSize = 12
 	RangeValueLabel.Font = Enum.Font.GothamBold
 	RangeValueLabel.TextXAlignment = Enum.TextXAlignment.Right
@@ -754,7 +789,7 @@ local function CreateGUI()
 	local SliderBg = Instance.new("Frame")
 	SliderBg.Size = UDim2.new(1, 0, 0, 6)
 	SliderBg.Position = UDim2.new(0, 0, 0.5, -3)
-	SliderBg.BackgroundColor3 = Color3.fromRGB(24, 24, 27)
+	SliderBg.BackgroundColor3 = RosePalette.BtnBg
 	SliderBg.BorderSizePixel = 0
 	SliderBg.Parent = SliderHitbox
 	Instance.new("UICorner", SliderBg).CornerRadius = UDim.new(1, 0)
@@ -767,15 +802,15 @@ local function CreateGUI()
 	Instance.new("UICorner", SliderFill).CornerRadius = UDim.new(1, 0)
 
 	AddGradient(SliderFill, ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(113, 113, 122)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255)),
+		ColorSequenceKeypoint.new(0, RosePalette.RoseDeep),
+		ColorSequenceKeypoint.new(1, RosePalette.RoseSoft),
 	}), 0)
 
 	local SliderKnob = Instance.new("Frame")
 	SliderKnob.Size = UDim2.fromOffset(14, 14)
 	SliderKnob.AnchorPoint = Vector2.new(0.5, 0.5)
 	SliderKnob.Position = UDim2.new(0, 0, 0.5, 0)
-	SliderKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	SliderKnob.BackgroundColor3 = RosePalette.TitleStart
 	SliderKnob.BorderSizePixel = 0
 	SliderKnob.Parent = SliderBg
 	Instance.new("UICorner", SliderKnob).CornerRadius = UDim.new(1, 0)
@@ -824,7 +859,7 @@ local function CreateGUI()
 	HintLabel.Position = UDim2.fromOffset(12, 164)
 	HintLabel.BackgroundTransparency = 1
 	HintLabel.Text = "Drag header • − collapse • × unload"
-	HintLabel.TextColor3 = Color3.fromRGB(161, 161, 170)
+	HintLabel.TextColor3 = RosePalette.RoseMuted
 	HintLabel.TextSize = 10
 	HintLabel.Font = Enum.Font.Gotham
 	HintLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -846,25 +881,25 @@ local function CreateGUI()
 		if state then
 			StatusLabel.Text = "Status: ON"
 			TrackGrad.Color = ColorSequence.new({
-				ColorSequenceKeypoint.new(0, Color3.fromRGB(161, 161, 170)),
-				ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255)),
+				ColorSequenceKeypoint.new(0, RosePalette.RoseBright),
+				ColorSequenceKeypoint.new(1, RosePalette.RoseSoft),
 			})
 			TweenService:Create(Knob, info, {
 				Position = UDim2.fromOffset(23, 3),
-				BackgroundColor3 = Color3.fromRGB(12, 12, 14)
+				BackgroundColor3 = RosePalette.KnobDark
 			}):Play()
-			TweenService:Create(Dot, info, { BackgroundColor3 = Color3.fromRGB(255, 255, 255) }):Play()
+			TweenService:Create(Dot, info, { BackgroundColor3 = RosePalette.RoseBright }):Play()
 		else
 			StatusLabel.Text = "Status: OFF"
 			TrackGrad.Color = ColorSequence.new({
-				ColorSequenceKeypoint.new(0, Color3.fromRGB(24, 24, 27)),
-				ColorSequenceKeypoint.new(1, Color3.fromRGB(63, 63, 70)),
+				ColorSequenceKeypoint.new(0, RosePalette.OffTrackStart),
+				ColorSequenceKeypoint.new(1, RosePalette.OffTrackEnd),
 			})
 			TweenService:Create(Knob, info, {
 				Position = UDim2.fromOffset(3, 3),
-				BackgroundColor3 = Color3.fromRGB(161, 161, 170)
+				BackgroundColor3 = RosePalette.OffKnob
 			}):Play()
-			TweenService:Create(Dot, info, { BackgroundColor3 = Color3.fromRGB(82, 82, 91) }):Play()
+			TweenService:Create(Dot, info, { BackgroundColor3 = RosePalette.OffDot }):Play()
 		end
 	end
 
@@ -873,22 +908,22 @@ local function CreateGUI()
 		if state then
 			VisLabel.Text = "Visualizer: ON"
 			VisTrackGrad.Color = ColorSequence.new({
-				ColorSequenceKeypoint.new(0, Color3.fromRGB(161, 161, 170)),
-				ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255)),
+				ColorSequenceKeypoint.new(0, RosePalette.RoseBright),
+				ColorSequenceKeypoint.new(1, RosePalette.RoseSoft),
 			})
 			TweenService:Create(VisKnob, info, {
 				Position = UDim2.fromOffset(23, 3),
-				BackgroundColor3 = Color3.fromRGB(12, 12, 14)
+				BackgroundColor3 = RosePalette.KnobDark
 			}):Play()
 		else
 			VisLabel.Text = "Visualizer: OFF"
 			VisTrackGrad.Color = ColorSequence.new({
-				ColorSequenceKeypoint.new(0, Color3.fromRGB(24, 24, 27)),
-				ColorSequenceKeypoint.new(1, Color3.fromRGB(63, 63, 70)),
+				ColorSequenceKeypoint.new(0, RosePalette.OffTrackStart),
+				ColorSequenceKeypoint.new(1, RosePalette.OffTrackEnd),
 			})
 			TweenService:Create(VisKnob, info, {
 				Position = UDim2.fromOffset(3, 3),
-				BackgroundColor3 = Color3.fromRGB(161, 161, 170)
+				BackgroundColor3 = RosePalette.OffKnob
 			}):Play()
 		end
 	end
