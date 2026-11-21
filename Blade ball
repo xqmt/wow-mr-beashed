@@ -1,7 +1,6 @@
-if _G.oxymod_private then
+if _G.oxymod then
     return
 end
-_G.oxymod_private = true
 _G.oxymod = true
 
 cloneref = cloneref or function(inputValue)
@@ -24,7 +23,6 @@ local floorValue = math.floor
 local roundValue = math.round
 local maxValue = math.max
 local minValue = math.min
-local absValue = math.abs
 local arcSin = math.asin
 local toRadians = math.rad
 local randomValue = math.random
@@ -65,22 +63,15 @@ Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
 end)
 
 local remotes = ReplicatedStorage:WaitForChild("Remotes", 10)
-local packages = ReplicatedStorage:WaitForChild("Packages", 10)
-local balls = Workspace:WaitForChild("Balls", 10)
-local alive = Workspace:WaitForChild("Alive", 10)
-local runtime = Workspace:WaitForChild("Runtime", 10)
+local packages = ReplicatedStorage.Packages
+local balls = Workspace.Balls
+local alive = Workspace.Alive
+local runtime = Workspace.Runtime
 local dataPing = statsService.Network.ServerStatsItem["Data Ping"]
 local heartbeat = runService.Heartbeat
 local preSimulation = runService.PreSimulation
 local postSimulation = runService.PostSimulation
 local renderStepped = runService.RenderStepped
-
-local function getPingMs()
-    local ok, val = pcall(function()
-        return dataPing:GetValue()
-    end)
-    return (ok and type(val) == "number" and val > 0) and val or 45
-end
 
 local createGuiInstance = function(className, props)
     local inst = createInstance(className)
@@ -101,7 +92,7 @@ local swordEventConnections = {
 }
 
 if remotes and type(getconnections) == "function" then
-    local parrySuccessAll = remotes:FindFirstChild("ParrySuccessAll")
+    local parrySuccessAll = remotes:WaitForChild("ParrySuccessAll", 10)
     if parrySuccessAll then
         local ok, conns = pcall(getconnections, parrySuccessAll.OnClientEvent)
         if ok and type(conns) == "table" then
@@ -114,7 +105,7 @@ if remotes and type(getconnections) == "function" then
             end
         end
     end
-    local fireSwordInfo = remotes:FindFirstChild("FireSwordInfo")
+    local fireSwordInfo = remotes:WaitForChild("FireSwordInfo", 10)
     if fireSwordInfo then
         local ok, conns = pcall(getconnections, fireSwordInfo.OnClientEvent)
         if ok and type(conns) == "table" then
@@ -130,39 +121,62 @@ if remotes and type(getconnections) == "function" then
 end
 
 -- ═══════════════════════════════════════════════════════════
--- CONFIG STORAGE (PRIVATE PREMIUM)
+-- CONFIG STORAGE
 -- ═══════════════════════════════════════════════════════════
-local curveMethods = {"camera", "dot", "backwards", "slow", "random", "smart_orbit"}
-local desyncModes = {"weave", "strafe", "backstep"}
+local curveMethods = {"camera", "dot", "backwards", "slow", "random"}
+local immortalModes = {"tri-step", "strafe", "orbit"}
+
+local function serializeColor(c)
+    if typeof(c) == "Color3" then
+        return {r = c.R, g = c.G, b = c.B}
+    end
+    return {r = 115 / 255, g = 225 / 255, b = 1}
+end
+
+local function deserializeColor(val, fallback)
+    if typeof(val) == "Color3" then
+        return val
+    end
+    if type(val) == "table" then
+        local r = tonumber(val.r or val[1])
+        local g = tonumber(val.g or val[2])
+        local b = tonumber(val.b or val[3])
+        if r and g and b then
+            return Color3.new(clampValue(r, 0, 1), clampValue(g, 0, 1), clampValue(b, 0, 1))
+        end
+    end
+    return fallback
+end
+
+local defaultParryVisColor = colorFromRGB(115, 225, 255)
+local defaultImmortalIconColor = colorFromRGB(255, 255, 255)
 
 local configStorage = {
-    folder = "oxymod_private",
+    folder = "oxymod",
     storage_ok = type(readfile) == "function" and type(writefile) == "function",
     last_saved = {},
     has_saved = false,
     defaults = {
         accuracy = 100,
-        parry_reaction_bias = 0,
-        smart_anti_curve = true,
+        spam_threshold = 3,
+        spam_cps = 120,
         curve_keybind = false,
         manual_notify = false,
         curve_notify = false,
-        curve_method = "dot",
+        curve_method = "camera",
         manual_spam = "E",
         triggerbot_key = "T",
         ability_esp = false,
-        ability_esp_distance = true,
-        ball_tracer = false,
         auto_parry = false,
+        parry_visualize = false,
+        parry_visualize_color = serializeColor(defaultParryVisColor),
         ball_debug = false,
         auto_spam = false,
-        spam_aggressiveness = 75,
         immortal = false,
+        immortal_mode = "tri-step",
         immortal_visualizer = true,
-        immortal_fake_cam = true,
-        immortal_mode = "weave",
-        immortal_range = 15,
-        immortal_speed = 380,
+        immortal_icon_color = serializeColor(defaultImmortalIconColor),
+        immortal_range = 14,
         random_target = false,
         unlock_all = false,
         last_equipped_sword = "",
@@ -173,12 +187,14 @@ local configStorage = {
         deleted_explosions = {},
         antilag = false,
         no_render = false,
+        headless = false,
+        korblox = false,
         device_spoof_type = "PC",
         ability_esp_icon = true,
         ability_esp_cooldown = true,
     }
 }
-configStorage.path = configStorage.folder .. "/premium_config.json"
+configStorage.path = configStorage.folder .. "/config.json"
 
 configStorage.ensure_folder = function()
     if type(makefolder) ~= "function" then return end
@@ -234,14 +250,13 @@ configStorage.normalize = function(input)
         end
     end
     t.accuracy = clampValue(floorValue(t.accuracy + 0.5), 1, 100)
-    t.parry_reaction_bias = clampValue(roundValue(t.parry_reaction_bias), -25, 25)
-    t.spam_aggressiveness = clampValue(roundValue(t.spam_aggressiveness), 10, 100)
-    t.immortal_range = clampValue(roundValue(t.immortal_range), 3, 50)
-    t.immortal_speed = clampValue(roundValue(t.immortal_speed), 120, 900)
+    t.spam_threshold = clampValue(floorValue(t.spam_threshold + 0.5), 1, 3)
+    t.spam_cps = clampValue(roundValue(t.spam_cps), 50, 500)
+    t.immortal_range = clampValue(roundValue(t.immortal_range), 1, 50)
     if not findInTable(curveMethods, t.curve_method) then
         t.curve_method = configStorage.defaults.curve_method
     end
-    if not findInTable(desyncModes, t.immortal_mode) then
+    if not findInTable(immortalModes, t.immortal_mode) then
         t.immortal_mode = configStorage.defaults.immortal_mode
     end
     if not configStorage.valid_key(t.manual_spam) then
@@ -265,6 +280,8 @@ do
 end
 
 local config = _G.config
+local parryVisColor = deserializeColor(config.parry_visualize_color, defaultParryVisColor)
+local immortalIconColor = deserializeColor(config.immortal_icon_color, defaultImmortalIconColor)
 
 configStorage.changed = function()
     if not configStorage.has_saved then return true end
@@ -303,14 +320,14 @@ end
 
 configStorage.save()
 spawnTask(function()
-    while _G.oxymod and _G.oxymod_private do
+    while _G.oxymod do
         waitTask(1)
         configStorage.save()
     end
 end)
 
 -- ═══════════════════════════════════════════════════════════
--- UI INITIALIZATION
+-- SHITARO UI INITIALIZATION
 -- ═══════════════════════════════════════════════════════════
 local env = (getgenv or getfenv)()
 if env.oxymod_shitaro_ui and type(env.oxymod_shitaro_ui.unload) == "function" then
@@ -325,9 +342,9 @@ env.oxymod_shitaro_ui = ui
 local window = ui:window({
     title = "forever private",
     script = "forever.lol",
-    folder = "forever_private",
+    folder = "forever",
     key = "Insert",
-    size = {840, 520},
+    size = {820, 500},
     font = false,
 })
 
@@ -348,6 +365,7 @@ local visualSection = visualPage:section({name = "visual", side = "left"})
 
 local miscPage = miscTab:page("general", {cols = 2})
 local miscSection = miscPage:section({name = "misc", side = "left"})
+local characterSection = miscPage:section({name = "Character", side = "left"})
 local deviceSpoofSection = miscPage:section({name = "device spoof", side = "right"})
 
 settingsTab:page("menu"):settings()
@@ -355,40 +373,41 @@ settingsTab:page("configs"):configs()
 local sessionSection = settingsTab:page("session"):section({name = "session"})
 
 local immortalController = nil
+local parryVisController = nil
+local characterCosmeticsController = nil
 local syncAllTogglesFromConfig = nil
-local setBallTracerEnabled = nil
+
+local function cleanupAllFeatures()
+    if immortalController then
+        pcall(immortalController.destroy)
+    end
+    if parryVisController then
+        pcall(parryVisController.destroy)
+    end
+    if characterCosmeticsController then
+        pcall(characterCosmeticsController.destroy)
+    end
+end
 
 sessionSection:button({
-    name = "unload private",
+    name = "unload",
     style = "danger",
     cb = function()
         _G.oxymod = false
-        _G.oxymod_private = false
-        if immortalController then
-            pcall(immortalController.destroy)
-        end
-        if setBallTracerEnabled then
-            pcall(setBallTracerEnabled, false)
-        end
+        cleanupAllFeatures()
         ui:unload()
     end,
 })
 
 local notificationService = {
     notify = function(_, opts)
-        ui:notify(tostring(opts.title or "private") .. ": " .. tostring(opts.content or ""), "info", opts.duration or 3)
+        ui:notify(tostring(opts.title or "info") .. ": " .. tostring(opts.content or ""), "info", opts.duration or 3)
     end,
 }
 
 ui:onunload(function()
     _G.oxymod = false
-    _G.oxymod_private = false
-    if immortalController then
-        pcall(immortalController.destroy)
-    end
-    if setBallTracerEnabled then
-        pcall(setBallTracerEnabled, false)
-    end
+    cleanupAllFeatures()
     if env.oxymod_shitaro_ui == ui then
         env.oxymod_shitaro_ui = nil
     end
@@ -406,7 +425,6 @@ local curveController = {
     methods = curveMethods,
     dropdown = nil,
     syncing = false,
-    orbit_phase = 0,
 }
 local swordAnimationState = {
     active = nil,
@@ -415,8 +433,8 @@ local swordAnimationState = {
     api = nil,
     generation = 0,
     last_spam = 0,
-    cancel_delay = 0.10,
-    cancel_fraction = 0.32,
+    cancel_delay = 0.12,
+    cancel_fraction = 0.35,
 }
 local parryController = {
     count = 0,
@@ -442,7 +460,6 @@ local ballState = {
         Curving = tick(),
     },
     positions = {},
-    prev_positions = {},
     replicator = nil,
 }
 
@@ -473,7 +490,7 @@ end
 
 eventCapture.polygon = function(seed)
     local serverTimeStr = tostring(floorValue(Workspace:GetServerTimeNow() * 100))
-    local tokenKey = eventCapture.token_fn and eventCapture.token_fn(seed, "TIME") or tostring(seed)
+    local tokenKey = eventCapture.token_fn(seed, "TIME")
     local out = createTable(#serverTimeStr)
     for i = 1, #serverTimeStr do
         out[i] = stringChar(bitwiseXor((stringByte(serverTimeStr, i) + i) % 256, stringByte(tokenKey, (i - 1) % #tokenKey + 1)))
@@ -535,28 +552,12 @@ for _, desc in ipairs(ReplicatedStorage:GetDescendants()) do
 end
 
 ballState.get = function()
-    local bestBall = nil
-    local bestScore = math.huge
-    local char = localPlayer.Character
-    local rootPos = char and char.PrimaryPart and char.PrimaryPart.Position
     for _, b in ipairs(balls:GetChildren()) do
         if b:GetAttribute("realBall") then
-            if not bestBall then
-                bestBall = b
-            end
-            if rootPos then
-                local pos = ballState.positions[b] or b.Position
-                local dist = (pos - rootPos).Magnitude
-                local isTarget = (b:GetAttribute("target") == name)
-                local score = isTarget and (dist * 0.35) or (dist + 250)
-                if score < bestScore then
-                    bestScore = score
-                    bestBall = b
-                end
-            end
+            return b
         end
     end
-    return bestBall
+    return nil
 end
 
 ballState.get_all = function()
@@ -587,7 +588,6 @@ end
 if ballState.replicator then
     ballState.replicator.OnClientEvent:Connect(function(ball, pos)
         if ball and ball.Parent == balls and ball:GetAttribute("realBall") == true then
-            ballState.prev_positions[ball] = ballState.positions[ball] or ball.Position
             ballState.positions[ball] = pos
         end
     end)
@@ -599,6 +599,23 @@ ballState.position = function(ball)
         return ballState.positions[targetBall] or targetBall.Position
     end
     return Vector3.zero
+end
+
+ballState.props = function()
+    local targetBall = ballState.get()
+    local char = localPlayer.Character
+    local root = char and char.PrimaryPart
+    local vel = Vector3.zero
+    local pos = root and root.Position or Vector3.zero
+    local bPos = ballState.position(targetBall)
+    local diff = pos - bPos
+    local unit = diff.Magnitude > 0 and diff.Unit or Vector3.zero
+    return {
+        Velocity = vel,
+        Direction = unit,
+        Distance = diff.Magnitude,
+        Dot = unit:Dot(vel.Unit),
+    }
 end
 
 targetManager.pick_random = function()
@@ -694,6 +711,24 @@ targetManager.closest = function()
     return targetManager.by_mouse()
 end
 
+targetManager.props = function()
+    local current = targetManager.current or targetManager.closest()
+    if not current or not current.PrimaryPart then
+        return false
+    end
+    local char = localPlayer.Character
+    local root = char and char.PrimaryPart
+    if not root then
+        return false
+    end
+    local pos = root.Position
+    return {
+        velocity = current.PrimaryPart.Velocity,
+        direction = (pos - current.PrimaryPart.Position).Unit,
+        distance = (pos - current.PrimaryPart.Position).Magnitude,
+    }
+end
+
 curveController.get_cframe = function()
     local cf = (currentCamera or Workspace.CurrentCamera).CFrame
     local char = localPlayer.Character
@@ -702,21 +737,10 @@ curveController.get_cframe = function()
 
     local targetPos = (targetManager.current and targetManager.current.PrimaryPart and targetManager.current.PrimaryPart.Position)
         or (hrp.Position + cf.LookVector * 1000)
-    local delta = targetPos - hrp.Position
-    local unit = delta.Magnitude > 0.01 and delta.Unit or cf.LookVector
+    local unit = (targetPos - hrp.Position).Unit
     local method = config.curve_method
 
-    if method == "smart_orbit" then
-        curveController.orbit_phase = (curveController.orbit_phase + 0.35) % (math.pi * 2)
-        local right = unit:Cross(Vector3.new(0, 1, 0))
-        if right.Magnitude < 0.01 then
-            right = Vector3.new(1, 0, 0)
-        else
-            right = right.Unit
-        end
-        local offset = right * (math.sin(curveController.orbit_phase) * 320) + Vector3.new(0, 45, 0)
-        return createCFrame(hrp.Position, targetPos + offset)
-    elseif method == "dot" then
+    if method == "dot" then
         return CFrame.lookAt(hrp.Position, targetPos + createVector3(0, 1.75, 0))
     elseif method == "backwards" then
         return createCFrame(hrp.Position, hrp.Position + -unit * 1000)
@@ -866,7 +890,7 @@ swordAnimationState.grab = function(isSpam)
         if len > 0 then
             delayTime = minValue(delayTime, len * swordAnimationState.cancel_fraction)
         end
-        if delayTime < 0.04 then delayTime = 0.04 end
+        if delayTime < 0.05 then delayTime = 0.05 end
         local stopFade = animObj:GetAttribute("StopFadeTime") or 0.05
         delayTask(delayTime, function()
             if gen == swordAnimationState.generation and swordAnimationState.active == track then
@@ -949,11 +973,11 @@ parryController.fire = function(isSpam)
         end
     end
 
-    if parryController.count > 9 then
+    if parryController.count > 7 then
         return false
     end
     parryController.count = parryController.count + 1
-    delayTask(0.45, function()
+    delayTask(0.5, function()
         if parryController.count > 0 then
             parryController.count = parryController.count - 1
         end
@@ -962,24 +986,24 @@ parryController.fire = function(isSpam)
 end
 
 -- ═══════════════════════════════════════════════════════════
--- IMMORTAL SYSTEM V2 (DESYNC + VISUALIZER + CAMERA ANCHOR)
+-- IMMORTAL SYSTEM (DESYNC + 3 MODES + VISUALIZER + CAMERA ANCHOR)
 -- ═══════════════════════════════════════════════════════════
 do
     local VISUALIZER_IMAGE_ID = "rbxassetid://126103687650989"
 
     local immortalCfg = {
         Enabled = config.immortal == true,
+        Mode = findInTable(immortalModes, config.immortal_mode) and config.immortal_mode or "tri-step",
         ShowVisualizer = config.immortal_visualizer ~= false,
-        UseFakeCam = config.immortal_fake_cam ~= false,
-        Mode = config.immortal_mode or "weave",
+        IconColor = immortalIconColor,
         PhysicsSenderRateActive = "15",
         PhysicsSenderRateDefault = "60",
-        Radius = clampValue(roundValue(config.immortal_range or 15), 3, 50),
-        VelocitySpeed = clampValue(roundValue(config.immortal_speed or 380), 120, 900),
-        CamSmoothSpeed = 28,
+        Radius = clampValue(roundValue(config.immortal_range or 14), 1, 50),
+        VelocitySpeed = 350,
+        CamSmoothSpeed = 24,
         CamHeightOffset = 1.6,
-        VisualizerSmoothSpeed = 22,
-        StepInterval = 0.065,
+        VisualizerSmoothSpeed = 18,
+        StepInterval = 0.08,
     }
 
     local function getImmortalChar()
@@ -995,7 +1019,7 @@ do
     end
 
     local camAnchor = createInstance("Part")
-    camAnchor.Name = "ImmortalV2CamAnchor"
+    camAnchor.Name = "ImmortalV1CamAnchor"
     camAnchor.Size = createVector3(0.1, 0.1, 0.1)
     camAnchor.Transparency = 1
     camAnchor.CanCollide = false
@@ -1005,7 +1029,7 @@ do
     camAnchor.Parent = Workspace
 
     local visFolder = createInstance("Folder")
-    visFolder.Name = "ImmortalV2Visualizer"
+    visFolder.Name = "ImmortalV1Visualizer"
     visFolder.Parent = Workspace
 
     local visPart = createInstance("Part")
@@ -1021,7 +1045,7 @@ do
     local visBillboard = createInstance("BillboardGui")
     visBillboard.Name = "PositionBillboard"
     visBillboard.Adornee = visPart
-    visBillboard.Size = UDim2.fromScale(2.7, 2.7)
+    visBillboard.Size = UDim2.fromScale(2.5, 2.5)
     visBillboard.AlwaysOnTop = true
     visBillboard.LightInfluence = 0
     visBillboard.Enabled = immortalCfg.ShowVisualizer and immortalCfg.Enabled
@@ -1034,7 +1058,7 @@ do
     visImage.Position = UDim2.fromScale(0.5, 0.5)
     visImage.BackgroundTransparency = 1
     visImage.Image = VISUALIZER_IMAGE_ID
-    visImage.ImageColor3 = colorFromRGB(140, 176, 255)
+    visImage.ImageColor3 = immortalCfg.IconColor
     visImage.ImageTransparency = (immortalCfg.ShowVisualizer and immortalCfg.Enabled) and 0 or 1
     visImage.ScaleType = Enum.ScaleType.Fit
     visImage.Parent = visBillboard
@@ -1051,9 +1075,19 @@ do
     local lastStepIndex = nil
     local running = true
 
-    local fadeInInfo = createTweenInfo(0.2, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-    local fadeOutInfo = createTweenInfo(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-    local colorTweenInfo = createTweenInfo(0.2, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+    local fadeInInfo = createTweenInfo(0.22, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+    local fadeOutInfo = createTweenInfo(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+    local colorTweenInfo = createTweenInfo(0.25, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+
+    local function getStepColor(stepIndex)
+        local base = immortalCfg.IconColor or defaultImmortalIconColor
+        if stepIndex == 1 then
+            return Color3.new(base.R * 0.78, base.G * 0.78, base.B * 0.78)
+        elseif stepIndex == 2 then
+            return Color3.new(base.R * 0.58, base.G * 0.58, base.B * 0.58)
+        end
+        return base
+    end
 
     local function setVisualizerFaded(visible)
         if not visBillboard or not visImage then return end
@@ -1063,13 +1097,19 @@ do
         visHideToken += 1
         local currentToken = visHideToken
 
-        if visFadeTween then visFadeTween:Cancel(); visFadeTween = nil end
-        if visScaleTween then visScaleTween:Cancel(); visScaleTween = nil end
+        if visFadeTween then
+            visFadeTween:Cancel()
+            visFadeTween = nil
+        end
+        if visScaleTween then
+            visScaleTween:Cancel()
+            visScaleTween = nil
+        end
 
         if visible then
             visBillboard.Enabled = true
             visImage.Size = UDim2.fromScale(0.82, 0.82)
-            visFadeTween = TweenService:Create(visImage, fadeInInfo, {ImageTransparency = 0.06})
+            visFadeTween = TweenService:Create(visImage, fadeInInfo, {ImageTransparency = 0.08})
             visScaleTween = TweenService:Create(visImage, fadeInInfo, {Size = UDim2.fromScale(1, 1)})
             visFadeTween:Play()
             visScaleTween:Play()
@@ -1097,15 +1137,30 @@ do
         setVisualizerFaded(active)
     end
 
+    local function applyIconColor(col, stepIndex)
+        if typeof(col) ~= "Color3" then return end
+        immortalCfg.IconColor = col
+        immortalIconColor = col
+        config.immortal_icon_color = serializeColor(col)
+        local targetColor = getStepColor(stepIndex or lastStepIndex or 0)
+        if visImage then
+            if visColorTween then
+                visColorTween:Cancel()
+            end
+            visColorTween = TweenService:Create(visImage, colorTweenInfo, {ImageColor3 = targetColor})
+            visColorTween:Play()
+        end
+    end
+
     local function setDesiredTarget(pos, stepIndex)
         desiredTargetPos = pos
         if stepIndex ~= lastStepIndex then
             lastStepIndex = stepIndex
-            local targetColor = (stepIndex == 0 and colorFromRGB(140, 176, 255))
-                or (stepIndex == 1 and colorFromRGB(80, 200, 120))
-                or colorFromRGB(255, 183, 197)
+            local targetColor = getStepColor(stepIndex)
             if visImage then
-                if visColorTween then visColorTween:Cancel() end
+                if visColorTween then
+                    visColorTween:Cancel()
+                end
                 visColorTween = TweenService:Create(visImage, colorTweenInfo, {ImageColor3 = targetColor})
                 visColorTween:Play()
             end
@@ -1123,7 +1178,7 @@ do
         local hrp = getImmortalHRP(char)
         local hum = getImmortalHum(char)
 
-        if not running or not _G.oxymod or not immortalCfg.Enabled or not immortalCfg.UseFakeCam or not hrp or not hum or hum.Health <= 0 then
+        if not running or not _G.oxymod or not immortalCfg.Enabled or not hrp or not hum or hum.Health <= 0 then
             lastFakePos = nil
             if cam and cam.CameraSubject == camAnchor and hum then
                 cam.CameraSubject = hum
@@ -1159,29 +1214,33 @@ do
         updateVisualizerVisibility()
     end
 
-    local function computeOffsetAndVel(stepIndex, lv, rv, radius, spd, mode)
+    local function computeOffsetAndVelocity(t, baseCF, radius, spd)
+        local lv = baseCF.LookVector
+        local rv = baseCF.RightVector
+        local mode = immortalCfg.Mode
+
         if mode == "strafe" then
-            if stepIndex % 2 == 0 then
-                return -rv * radius, -rv * spd
-            else
-                return rv * radius, rv * spd
-            end
-        elseif mode == "backstep" then
-            if stepIndex == 0 then
-                return (-lv * radius) - (rv * (radius * 0.45)), (-lv - rv * 0.45).Unit * spd
-            elseif stepIndex == 1 then
-                return (-lv * radius) + (rv * (radius * 0.45)), (-lv + rv * 0.45).Unit * spd
-            else
-                return -lv * (radius * 1.15), -lv * spd
-            end
+            local dirSign = (floorValue(t / immortalCfg.StepInterval) % 2 == 0) and 1 or -1
+            local stepIndex = dirSign == 1 and 0 or 1
+            return rv * (radius * dirSign), rv * (spd * dirSign), stepIndex
+        elseif mode == "orbit" then
+            local angle = t * 9
+            local cosA = math.cos(angle)
+            local sinA = math.sin(angle)
+            local offset = (rv * cosA + lv * sinA) * radius
+            local tangent = (-rv * sinA + lv * cosA)
+            local stepIndex = floorValue((angle % (math.pi * 2)) / ((math.pi * 2) / 3)) % 3
+            return offset, tangent * spd, stepIndex
+        end
+
+        -- default: "tri-step"
+        local stepIndex = floorValue(t / immortalCfg.StepInterval) % 3
+        if stepIndex == 0 then
+            return (-rv * radius) + (lv * (radius * 0.5)), -rv * spd, stepIndex
+        elseif stepIndex == 1 then
+            return (rv * radius) + (lv * (radius * 0.5)), rv * spd, stepIndex
         else
-            if stepIndex == 0 then
-                return (-rv * radius) + (lv * (radius * 0.55)), (-rv + lv * 0.45).Unit * spd
-            elseif stepIndex == 1 then
-                return (rv * radius) + (lv * (radius * 0.55)), (rv + lv * 0.45).Unit * spd
-            else
-                return -lv * radius, -lv * spd
-            end
+            return -lv * radius, -lv * spd, stepIndex
         end
     end
 
@@ -1214,26 +1273,15 @@ do
         hrp.CFrame = baseCF
         lastFakePos = baseCF.Position
 
-        if immortalCfg.UseFakeCam then
-            if camAnchor and camAnchor.Parent then
-                camAnchor.CFrame = createCFrame(getCamAnchorPos(baseCF.Position))
-            end
-            if cam.CameraSubject ~= camAnchor then
-                cam.CameraSubject = camAnchor
-            end
-        elseif cam.CameraSubject == camAnchor and hum then
-            cam.CameraSubject = hum
+        if camAnchor and camAnchor.Parent then
+            camAnchor.CFrame = createCFrame(getCamAnchorPos(baseCF.Position))
+        end
+        if cam.CameraSubject ~= camAnchor then
+            cam.CameraSubject = camAnchor
         end
         setPhysicsRate(immortalCfg.PhysicsSenderRateActive)
 
-        local t = tick()
-        local stepIndex = floorValue(t / immortalCfg.StepInterval) % 3
-        local radius = immortalCfg.Radius
-        local spd = immortalCfg.VelocitySpeed
-
-        local lv = baseCF.LookVector
-        local rv = baseCF.RightVector
-        local offset, vel = computeOffsetAndVel(stepIndex, lv, rv, radius, spd, immortalCfg.Mode)
+        local offset, vel, stepIndex = computeOffsetAndVelocity(tick(), baseCF, immortalCfg.Radius, immortalCfg.VelocitySpeed)
 
         local origCF = baseCF
         local origVel = hrp.AssemblyLinearVelocity
@@ -1308,37 +1356,24 @@ do
                 updateVisualizerVisibility()
             end
         end,
+        set_mode = function(modeVal)
+            if findInTable(immortalModes, modeVal) then
+                immortalCfg.Mode = modeVal
+                config.immortal_mode = modeVal
+            end
+        end,
         set_visualizer = function(enabled)
             immortalCfg.ShowVisualizer = (enabled == true)
             config.immortal_visualizer = immortalCfg.ShowVisualizer
             updateVisualizerVisibility()
         end,
-        set_fake_cam = function(enabled)
-            immortalCfg.UseFakeCam = (enabled == true)
-            config.immortal_fake_cam = immortalCfg.UseFakeCam
-            if not immortalCfg.UseFakeCam then
-                local cam = currentCamera or Workspace.CurrentCamera
-                local hum = getImmortalHum(getImmortalChar())
-                if cam and cam.CameraSubject == camAnchor and hum then
-                    cam.CameraSubject = hum
-                end
-            end
-        end,
-        set_mode = function(mode)
-            if findInTable(desyncModes, mode) then
-                immortalCfg.Mode = mode
-                config.immortal_mode = mode
-            end
+        set_icon_color = function(col)
+            applyIconColor(col, lastStepIndex)
         end,
         set_range = function(val)
-            local clamped = clampValue(roundValue(val), 3, 50)
+            local clamped = clampValue(roundValue(val), 1, 50)
             immortalCfg.Radius = clamped
             config.immortal_range = clamped
-        end,
-        set_speed = function(val)
-            local clamped = clampValue(roundValue(val), 120, 900)
-            immortalCfg.VelocitySpeed = clamped
-            config.immortal_speed = clamped
         end,
         destroy = function()
             running = false
@@ -1368,10 +1403,10 @@ do
     immortalSection:dropdown({
         name = "mode",
         flag = "combat.immortal_mode",
-        values = desyncModes,
-        default = config.immortal_mode or "weave",
-        cb = function(m)
-            immortalController.set_mode(m)
+        values = immortalModes,
+        default = config.immortal_mode or "tri-step",
+        cb = function(modeVal)
+            immortalController.set_mode(modeVal)
         end,
     })
 
@@ -1384,40 +1419,29 @@ do
         end,
     })
 
-    immortalSection:toggle({
-        name = "fake cam anchor",
-        flag = "combat.immortal_fake_cam",
-        default = config.immortal_fake_cam ~= false,
-        cb = function(v)
-            immortalController.set_fake_cam(v)
+    immortalSection:colorpicker({
+        name = "icon color",
+        flag = "combat.immortal_icon_color",
+        default = immortalIconColor,
+        cb = function(color)
+            immortalController.set_icon_color(color)
         end,
     })
 
     immortalSection:slider({
         name = "range",
         flag = "combat.immortal_range",
-        min = 3,
+        min = 1,
         max = 50,
-        default = config.immortal_range or 15,
+        default = config.immortal_range or 14,
         cb = function(v)
             immortalController.set_range(v)
-        end,
-    })
-
-    immortalSection:slider({
-        name = "speed",
-        flag = "combat.immortal_speed",
-        min = 120,
-        max = 900,
-        default = config.immortal_speed or 380,
-        cb = function(v)
-            immortalController.set_speed(v)
         end,
     })
 end
 
 -- ═══════════════════════════════════════════════════════════
--- ABILITY ESP V2 (DISTANCE + COOLDOWN + ICON)
+-- ABILITY ESP
 -- ═══════════════════════════════════════════════════════════
 local abilityEspState = {
     labels = {},
@@ -1462,25 +1486,25 @@ abilityEspState.attach_player = function(self, player)
     local sGui = (gethui and gethui()) or localPlayer:WaitForChild("PlayerGui")
 
     local BGui = createInstance("BillboardGui")
-    BGui.Name = "OxyPrivate_AbilityESP"
+    BGui.Name = "Oxy_AbilityESP"
     BGui.AlwaysOnTop = true
-    BGui.Size = createUDim2(0, 165, 0, 48)
-    BGui.StudsOffset = createVector3(0, 3.2, 0)
+    BGui.Size = createUDim2(0, 140, 0, 40)
+    BGui.StudsOffset = createVector3(0, 3.0, 0)
     BGui.Adornee = head
     BGui.Parent = sGui
     self.labels[player] = BGui
 
     local Icon = createInstance("ImageLabel")
-    Icon.Size = fromOffset(28, 28)
-    Icon.Position = fromOffset(5, 10)
+    Icon.Size = fromOffset(26, 26)
+    Icon.Position = fromOffset(5, 7)
     Icon.BackgroundTransparency = 1
     Icon.Image = "rbxassetid://3944703587"
     Icon.Parent = BGui
 
     local StatusLbl = createInstance("TextLabel")
     StatusLbl.BackgroundTransparency = 1
-    StatusLbl.Size = fromOffset(125, 15)
-    StatusLbl.Position = fromOffset(38, 4)
+    StatusLbl.Size = fromOffset(95, 14)
+    StatusLbl.Position = fromOffset(36, 5)
     StatusLbl.Text = "NONE"
     StatusLbl.TextColor3 = colorFromRGB(255, 255, 255)
     StatusLbl.TextSize = 10
@@ -1491,8 +1515,8 @@ abilityEspState.attach_player = function(self, player)
 
     local ReadyLbl = createInstance("TextLabel")
     ReadyLbl.BackgroundTransparency = 1
-    ReadyLbl.Size = fromOffset(125, 14)
-    ReadyLbl.Position = fromOffset(38, 18)
+    ReadyLbl.Size = fromOffset(95, 14)
+    ReadyLbl.Position = fromOffset(36, 18)
     ReadyLbl.Text = "READY"
     ReadyLbl.TextColor3 = colorFromRGB(80, 220, 120)
     ReadyLbl.TextSize = 10
@@ -1500,18 +1524,6 @@ abilityEspState.attach_player = function(self, player)
     ReadyLbl.TextXAlignment = Enum.TextXAlignment.Left
     ReadyLbl.TextStrokeTransparency = 0
     ReadyLbl.Parent = BGui
-
-    local DistLbl = createInstance("TextLabel")
-    DistLbl.BackgroundTransparency = 1
-    DistLbl.Size = fromOffset(125, 13)
-    DistLbl.Position = fromOffset(38, 31)
-    DistLbl.Text = "0m"
-    DistLbl.TextColor3 = colorFromRGB(160, 189, 255)
-    DistLbl.TextSize = 9
-    DistLbl.Font = Enum.Font.Code
-    DistLbl.TextXAlignment = Enum.TextXAlignment.Left
-    DistLbl.TextStrokeTransparency = 0
-    DistLbl.Parent = BGui
 
     spawnTask(function()
         while BGui and BGui.Parent and self.running do
@@ -1524,22 +1536,10 @@ abilityEspState.attach_player = function(self, player)
                     BGui.Adornee = liveHead
                 end
 
-                if config.ability_esp_distance ~= false and liveHead then
-                    local myRoot = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
-                    if myRoot then
-                        local studs = floorValue((liveHead.Position - myRoot.Position).Magnitude + 0.5)
-                        DistLbl.Visible = true
-                        DistLbl.Text = tostring(studs) .. " studs"
-                    end
-                else
-                    DistLbl.Visible = false
-                end
-
                 local rawAbility = player:GetAttribute("EquippedAbility") or player:GetAttribute("Ability") or "None"
                 StatusLbl.Text = string.upper(tostring(rawAbility))
 
                 if config.ability_esp_icon ~= false then
-                    Icon.Visible = true
                     local abilityFolder = DataAbilities:FindFirstChild(tostring(rawAbility))
                     if abilityFolder then
                         local assetIcon = abilityFolder:GetAttribute("Icon") or abilityFolder:GetAttribute("Icon1")
@@ -1547,12 +1547,9 @@ abilityEspState.attach_player = function(self, player)
                     else
                         Icon.Image = "rbxassetid://3944703587"
                     end
-                else
-                    Icon.Visible = false
                 end
 
                 if config.ability_esp_cooldown ~= false then
-                    ReadyLbl.Visible = true
                     local abActive = liveChar:GetAttribute("AbilityActive") == true
                     local cdActive = liveChar:GetAttribute("CooldownActive") == true
                     local cdExpiry = player:GetAttribute("CooldownExpiration")
@@ -1565,13 +1562,11 @@ abilityEspState.attach_player = function(self, player)
                     else
                         local cdDiff = cdExpiry and (cdExpiry - Workspace:GetServerTimeNow()) or 0
                         ReadyLbl.Text = cdDiff > 0 and string.format("%.1fS", cdDiff) or "COOLDOWN"
-                        ReadyLbl.TextColor3 = colorFromRGB(255, 110, 95)
+                        ReadyLbl.TextColor3 = colorFromRGB(220, 100, 80)
                     end
-                else
-                    ReadyLbl.Visible = false
                 end
             end)
-            waitTask(0.15)
+            waitTask(0.2)
         end
         pcall(function()
             if BGui and BGui.Parent then BGui:Destroy() end
@@ -1586,7 +1581,7 @@ abilityEspState.hook_respawn = function(self, player)
     self:detach_respawn(player)
     self.respawn_conns[player] = player.CharacterAdded:Connect(function()
         if not self.running then return end
-        delayTask(0.25, function()
+        delayTask(0.3, function()
             if self.running then
                 spawnTask(function() self:attach_player(player) end)
             end
@@ -1651,82 +1646,7 @@ abilityEspState.set = function(self, on)
 end
 
 -- ═══════════════════════════════════════════════════════════
--- BALL TRAJECTORY BEAM (PRIVATE VISUAL)
--- ═══════════════════════════════════════════════════════════
-do
-    local beamPart0, beamPart1, beamInst = nil, nil, nil
-
-    local function cleanupTracer()
-        if beamInst then pcall(function() beamInst:Destroy() end); beamInst = nil end
-        if beamPart0 then pcall(function() beamPart0:Destroy() end); beamPart0 = nil end
-        if beamPart1 then pcall(function() beamPart1:Destroy() end); beamPart1 = nil end
-    end
-
-    setBallTracerEnabled = function(enabled)
-        local active = (enabled == true) and (_G.oxymod == true)
-        config.ball_tracer = (enabled == true)
-        if runtimeConnections.ball_tracer then
-            runtimeConnections.ball_tracer:Disconnect()
-            runtimeConnections.ball_tracer = nil
-        end
-        cleanupTracer()
-        if not active then return end
-
-        beamPart0 = createInstance("Part")
-        beamPart0.Anchored = true
-        beamPart0.CanCollide = false
-        beamPart0.Transparency = 1
-        beamPart0.Size = createVector3(0.1, 0.1, 0.1)
-        beamPart0.Parent = Workspace
-
-        beamPart1 = createInstance("Part")
-        beamPart1.Anchored = true
-        beamPart1.CanCollide = false
-        beamPart1.Transparency = 1
-        beamPart1.Size = createVector3(0.1, 0.1, 0.1)
-        beamPart1.Parent = Workspace
-
-        local a0 = createInstance("Attachment")
-        a0.Parent = beamPart0
-        local a1 = createInstance("Attachment")
-        a1.Parent = beamPart1
-
-        beamInst = createInstance("Beam")
-        beamInst.Attachment0 = a0
-        beamInst.Attachment1 = a1
-        beamInst.Width0 = 0.25
-        beamInst.Width1 = 0.08
-        beamInst.FaceCamera = true
-        beamInst.Color = ColorSequence.new(colorFromRGB(140, 176, 255), colorFromRGB(255, 110, 95))
-        beamInst.Parent = beamPart0
-
-        runtimeConnections.ball_tracer = renderStepped:Connect(function()
-            if not config.ball_tracer or not _G.oxymod or not beamInst then return end
-            local b = ballState.get()
-            local char = localPlayer.Character
-            local root = char and char.PrimaryPart
-            if not b or not root then
-                beamInst.Enabled = false
-                return
-            end
-            local bPos = ballState.position(b)
-            local z = b:FindFirstChild("zoomies")
-            local vel = (z and z.VectorVelocity) or b.AssemblyLinearVelocity
-            local predPos = bPos + vel * 0.28
-            beamPart0.Position = bPos
-            beamPart1.Position = predPos
-            beamInst.Enabled = true
-            if b:GetAttribute("target") == name then
-                beamInst.Color = ColorSequence.new(colorFromRGB(255, 80, 80), colorFromRGB(255, 183, 197))
-            else
-                beamInst.Color = ColorSequence.new(colorFromRGB(140, 176, 255), colorFromRGB(80, 200, 120))
-            end
-        end)
-    end
-end
-
--- ═══════════════════════════════════════════════════════════
--- PREDICTIVE PARRY, SMART CURVE, TRIGGERBOT & SPAM
+-- PARRY, CURVE, TRIGGERBOT & SPAM
 -- ═══════════════════════════════════════════════════════════
 local triggerbotState = {
     on = false,
@@ -1734,16 +1654,28 @@ local triggerbotState = {
     key = Enum.KeyCode[config.triggerbot_key] or Enum.KeyCode.T,
 }
 
-local function computeAccuracyFactor()
-    local acc = clampValue(config.accuracy or 100, 1, 100)
-    return (acc - 1) * 0.015151515151515152
-end
-
 local parryState = {
     debounce = false,
     until_at = 0,
-    accuracy = computeAccuracyFactor(),
+    accuracy = (config.accuracy - 1) * 0.015151515151515152,
 }
+
+local function computeParryRadius(ball, parryAccuracy)
+    local pingClamp = clampValue(dataPing:GetValue() / 10 / 10, 5, 17)
+    local speed = 0
+    if ball then
+        local zoomies = ball:FindFirstChild("zoomies")
+        if zoomies and typeof(zoomies.VectorVelocity) == "Vector3" then
+            speed = zoomies.VectorVelocity.Magnitude
+        elseif typeof(ball.AssemblyLinearVelocity) == "Vector3" then
+            speed = ball.AssemblyLinearVelocity.Magnitude
+        end
+    end
+    local acc = tonumber(parryAccuracy) or parryState.accuracy
+    local divisor = (2.4 + minValue(maxValue(speed - 9.5, 0), 650) * 0.002) * acc
+    local dynamicPart = divisor ~= 0 and maxValue(speed / divisor, 9.5) or 9.5
+    return pingClamp + dynamicPart
+end
 
 ballState.curved = function(ball)
     local b = ball or ballState.get()
@@ -1752,26 +1684,21 @@ ballState.curved = function(ball)
     if not zoomies then return false end
 
     local now = tick()
-    local ping = getPingMs()
+    local ping = dataPing:GetValue()
     local vel = zoomies.VectorVelocity
-    if vel.Magnitude < 1 then return false end
     local unit = vel.Unit
     local char = localPlayer.Character
     local root = char and char.PrimaryPart
     if not root then return false end
-
     local pos = root.Position
     local bPos = ballState.position(b)
-    local toPlayerVec = pos - bPos
-    local dist = toPlayerVec.Magnitude
-    if dist < 0.01 then return false end
-
-    local toPlayerUnit = toPlayerVec.Unit
+    local toPlayerUnit = (pos - bPos).Unit
     local dot = toPlayerUnit:Dot(unit)
     local speed = vel.Magnitude
+    if speed == 0 then return false end
     local speedFactor = minValue(speed / 100, 40)
-    local curveVec = unit - vel
-    local curveDelta = curveVec.Magnitude > 0.001 and (dot - toPlayerUnit:Dot(curveVec.Unit)) or 0
+    local curveDelta = dot - toPlayerUnit:Dot((unit - vel).Unit)
+    local dist = (pos - bPos).Magnitude
     local threshold = 0.5 - ping / 1000
     local timeToArrive = dist / speed - ping / 1000
     local safeRadius = 15 - minValue(dist / 1000, 15) + speedFactor
@@ -1820,7 +1747,6 @@ end
 
 balls.ChildRemoved:Connect(function(child)
     ballState.positions[child] = nil
-    ballState.prev_positions[child] = nil
     parryController.count = 0
     parryState.debounce = false
     parryState.until_at = 0
@@ -1842,11 +1768,6 @@ parryState.check = function()
     if parryState.debounce or now < parryState.until_at then return end
 
     local pos = root.Position
-    local pingMs = getPingMs()
-    local pingSec = clampValue(pingMs / 1000, 0.005, 0.25)
-    local pingClamp = clampValue(pingMs / 100, 5, 18)
-    local biasOffset = (config.parry_reaction_bias or 0) * 0.25
-
     local mainBall = ballState.get()
     local mainTarget = mainBall and mainBall:GetAttribute("target")
     local tornado = runtime:FindFirstChild("Tornado")
@@ -1857,15 +1778,9 @@ parryState.check = function()
             local zoomies = b:FindFirstChild("zoomies")
             if zoomies then
                 local bTarget = b:GetAttribute("target")
-                local vel = zoomies.VectorVelocity
-                local speed = vel.Magnitude
-                local bPos = ballState.position(b)
-                local toPlayer = pos - bPos
-                local dist = toPlayer.Magnitude
-                local radialSpeed = speed > 0.1 and maxValue(toPlayer.Unit:Dot(vel.Unit) * speed, 0) or 0
-                local predictedDist = maxValue(dist - radialSpeed * (pingSec * 0.75), 0)
-
-                local divisor = (2.35 + minValue(maxValue(speed - 9.5, 0), 750) * 0.0021) * parryState.accuracy
+                local speed = zoomies.VectorVelocity.Magnitude
+                local dist = (pos - ballState.position(b)).Magnitude
+                local reach = computeParryRadius(b, parryState.accuracy)
 
                 if b:FindFirstChild("AeroDynamicSlashVFX") then
                     Debris:AddItem(b.AeroDynamicSlashVFX, 0)
@@ -1875,17 +1790,14 @@ parryState.check = function()
                 local skipBall = false
                 if tornado and now - ballState.state.AerodynamicTime < tornadoTime + 0.314159 then
                     skipBall = true
-                elseif config.smart_anti_curve ~= false and mainTarget == name and ballState.curved(b) and dist > 7.5 then
+                elseif mainTarget == name and ballState.curved(b) then
                     skipBall = true
                 end
 
-                local triggerRadius = pingClamp + maxValue(speed / maxValue(divisor, 0.2), 9.5) + biasOffset
-                local hitCheck = (dist <= triggerRadius) or (predictedDist <= triggerRadius * 0.88 and radialSpeed > 25)
-
-                if not skipBall and bTarget == name and hitCheck and parryState.accuracy > 0 then
+                if not skipBall and bTarget == name and dist <= reach and parryState.accuracy * 0.8 then
                     parryController.fire()
                     parryState.debounce = true
-                    parryState.until_at = now + 0.92
+                    parryState.until_at = now + 1
                     break
                 end
             end
@@ -1910,20 +1822,192 @@ parryState.set = function(autoParry)
     end
 end
 
+-- ═══════════════════════════════════════════════════════════
+-- PARRY VISUALIZE (AUTO PARRY RADIUS RING + COLOR PICKER)
+-- ═══════════════════════════════════════════════════════════
+do
+    local SEGMENTS = 64
+    local visFolder = createInstance("Folder")
+    visFolder.Name = "OxymodParryVisualize"
+    visFolder.Parent = Workspace
+
+    local ringPart = createInstance("Part")
+    ringPart.Name = "ParryRadiusDisc"
+    ringPart.Shape = Enum.PartType.Cylinder
+    ringPart.Material = Enum.Material.Neon
+    ringPart.Color = parryVisColor
+    ringPart.Transparency = 0.84
+    ringPart.CanCollide = false
+    ringPart.CanTouch = false
+    ringPart.CanQuery = false
+    ringPart.Anchored = true
+    ringPart.CastShadow = false
+    ringPart.Size = createVector3(0.08, 1, 1)
+    ringPart.Parent = visFolder
+
+    local outlinePart = createInstance("Part")
+    outlinePart.Name = "ParryRadiusRim"
+    outlinePart.Material = Enum.Material.Neon
+    outlinePart.Color = parryVisColor
+    outlinePart.Transparency = 0.25
+    outlinePart.CanCollide = false
+    outlinePart.CanTouch = false
+    outlinePart.CanQuery = false
+    outlinePart.Anchored = true
+    outlinePart.CastShadow = false
+    outlinePart.Size = createVector3(0.14, 0.14, 1)
+    outlinePart.Parent = visFolder
+
+    local segmentParts = {}
+    for i = 1, SEGMENTS do
+        local seg = createInstance("Part")
+        seg.Name = "RimSeg_" .. tostring(i)
+        seg.Material = Enum.Material.Neon
+        seg.Color = parryVisColor
+        seg.Transparency = 0.2
+        seg.CanCollide = false
+        seg.CanTouch = false
+        seg.CanQuery = false
+        seg.Anchored = true
+        seg.CastShadow = false
+        seg.Size = createVector3(0.12, 0.14, 1)
+        seg.Parent = visFolder
+        segmentParts[i] = seg
+    end
+
+    local visConn = nil
+    local currentRadius = 12
+    local initializedRadius = false
+
+    local function setVisVisible(visible)
+        local tFill = visible and 0.84 or 1
+        local tSeg = visible and 0.2 or 1
+        ringPart.Transparency = tFill
+        outlinePart.Transparency = 1
+        for i = 1, SEGMENTS do
+            segmentParts[i].Transparency = tSeg
+        end
+    end
+
+    local function applyVisColor(col)
+        if typeof(col) ~= "Color3" then return end
+        parryVisColor = col
+        config.parry_visualize_color = serializeColor(col)
+        ringPart.Color = col
+        outlinePart.Color = col
+        for i = 1, SEGMENTS do
+            segmentParts[i].Color = col
+        end
+    end
+
+    local function getActiveParryRadius()
+        local activeBall = ballState.get()
+        for _, b in ipairs(ballState.get_all()) do
+            if b:GetAttribute("target") == name then
+                activeBall = b
+                break
+            end
+        end
+        return computeParryRadius(activeBall, parryState.accuracy)
+    end
+
+    local function updateParryVisualize(dt)
+        if not config.parry_visualize or not _G.oxymod then
+            setVisVisible(false)
+            return
+        end
+
+        local char = localPlayer.Character
+        local root = char and (char.PrimaryPart or char:FindFirstChild("HumanoidRootPart"))
+        if not root then
+            setVisVisible(false)
+            return
+        end
+
+        local targetRadius = clampValue(getActiveParryRadius(), 4, 120)
+        if not initializedRadius then
+            currentRadius = targetRadius
+            initializedRadius = true
+        else
+            local alpha = 1 - math.exp(-16 * clampValue(dt or 0.016, 0, 0.1))
+            currentRadius = lerpValue(currentRadius, targetRadius, alpha)
+        end
+
+        local centerPos = root.Position - createVector3(0, 2.2, 0)
+        setVisVisible(true)
+
+        local diameter = currentRadius * 2
+        ringPart.Size = createVector3(0.08, diameter, diameter)
+        ringPart.CFrame = createCFrame(centerPos) * CFrame.Angles(0, 0, math.rad(90))
+
+        local stepAngle = (math.pi * 2) / SEGMENTS
+        local chordLen = maxValue(2 * currentRadius * math.sin(stepAngle * 0.5) + 0.06, 0.1)
+        for i = 1, SEGMENTS do
+            local a0 = (i - 1) * stepAngle
+            local a1 = i * stepAngle
+            local p0 = centerPos + createVector3(math.cos(a0) * currentRadius, 0, math.sin(a0) * currentRadius)
+            local p1 = centerPos + createVector3(math.cos(a1) * currentRadius, 0, math.sin(a1) * currentRadius)
+            local mid = (p0 + p1) * 0.5
+            local seg = segmentParts[i]
+            seg.Size = createVector3(0.12, 0.14, chordLen)
+            seg.CFrame = CFrame.lookAt(mid, p1)
+        end
+    end
+
+    local function setParryVisualizeEnabled(enabled)
+        local active = (enabled == true) and (_G.oxymod == true)
+        config.parry_visualize = (enabled == true)
+        initializedRadius = false
+
+        if visConn then
+            visConn:Disconnect()
+            visConn = nil
+        end
+
+        if not active then
+            setVisVisible(false)
+            return
+        end
+
+        visConn = renderStepped:Connect(updateParryVisualize)
+    end
+
+    parryVisController = {
+        set_enabled = setParryVisualizeEnabled,
+        set_color = applyVisColor,
+        destroy = function()
+            setParryVisualizeEnabled(false)
+            if visFolder then
+                pcall(function() visFolder:Destroy() end)
+                visFolder = nil
+            end
+        end,
+    }
+
+    visualSection:toggle({
+        name = "parry visualize",
+        flag = "visual.parry_visualize",
+        default = config.parry_visualize or false,
+        cb = function(v)
+            parryVisController.set_enabled(v)
+        end,
+    })
+
+    visualSection:colorpicker({
+        name = "color",
+        flag = "visual.color.parry_visualize",
+        default = parryVisColor,
+        cb = function(color)
+            parryVisController.set_color(color)
+        end,
+    })
+end
+
 parrySection:toggle({
     name = "auto parry",
     flag = "combat.auto_parry",
     default = config.auto_parry or false,
     cb = parryState.set,
-})
-
-parrySection:toggle({
-    name = "anti-curve",
-    flag = "combat.smart_anti_curve",
-    default = config.smart_anti_curve ~= false,
-    cb = function(v)
-        config.smart_anti_curve = (v == true)
-    end,
 })
 
 parrySection:slider({
@@ -1934,19 +2018,8 @@ parrySection:slider({
     default = config.accuracy or 100,
     suffix = "%",
     cb = function(accuracy)
+        parryState.accuracy = (accuracy - 1) * 0.015151515151515152
         config.accuracy = accuracy
-        parryState.accuracy = computeAccuracyFactor()
-    end,
-})
-
-parrySection:slider({
-    name = "range bias",
-    flag = "combat.parry_reaction_bias",
-    min = -25,
-    max = 25,
-    default = config.parry_reaction_bias or 0,
-    cb = function(bias)
-        config.parry_reaction_bias = roundValue(bias)
     end,
 })
 
@@ -1970,7 +2043,7 @@ remotes.ParrySuccessAll.OnClientEvent:Connect(function(_, part)
     local char = localPlayer.Character
     if not char or not char.PrimaryPart then return end
 
-    if not (part.Parent and part.Parent ~= char and part.Parent.Parent ~= alive) then
+    if not (part and part.Parent and part.Parent ~= char and part.Parent.Parent ~= alive) then
         targetManager.closest()
         if targetManager.current and targetManager.current.PrimaryPart then
             local b = ballState.get()
@@ -1979,8 +2052,9 @@ remotes.ParrySuccessAll.OnClientEvent:Connect(function(_, part)
                 local distTarget = (pos - targetManager.current.PrimaryPart.Position).Magnitude
                 local offset = pos - ballState.position(b)
                 local distBall = offset.Magnitude
-                local dot = offset.Unit:Dot(b.AssemblyLinearVelocity.Unit)
-                if distTarget < 16 and distBall < 16 and dot > -0.25 and ballState.curved() then
+                local velUnit = b.AssemblyLinearVelocity.Magnitude > 0 and b.AssemblyLinearVelocity.Unit or Vector3.zero
+                local dot = offset.Magnitude > 0 and offset.Unit:Dot(velUnit) or 0
+                if distTarget < 15 and distBall < 15 and dot > -0.25 and ballState.curved(b) then
                     parryController.fire()
                 end
             end
@@ -1992,9 +2066,10 @@ remotes.ParrySuccessAll.OnClientEvent:Connect(function(_, part)
     local zoomies = b:FindFirstChild("zoomies")
     if not zoomies then return end
     local speed = zoomies.VectorVelocity.Magnitude
+    if speed == 0 then return end
     local dist = (char.PrimaryPart.Position - ballState.position(b)).Magnitude
-    local ping = getPingMs()
-    local timeArr = dist / maxValue(speed, 1) - ping / 1000
+    local ping = dataPing:GetValue()
+    local timeArr = dist / speed - ping / 1000
     local safeRad = 15 - minValue(dist / 1000, 15) + minValue(speed / 100, 40)
     if speed > 100 and timeArr > ping / 10 then
         safeRad = maxValue(safeRad - 15, 15)
@@ -2021,19 +2096,18 @@ end)
 
 -- Curve Controls
 curveController.hotkeys = {
-    [Enum.KeyCode.One] = "smart_orbit",
-    [Enum.KeyCode.Two] = "camera",
-    [Enum.KeyCode.Three] = "dot",
-    [Enum.KeyCode.Four] = "backwards",
-    [Enum.KeyCode.Five] = "slow",
-    [Enum.KeyCode.Six] = "random",
+    [Enum.KeyCode.One] = "camera",
+    [Enum.KeyCode.Two] = "dot",
+    [Enum.KeyCode.Three] = "backwards",
+    [Enum.KeyCode.Four] = "slow",
+    [Enum.KeyCode.Five] = "random",
 }
 
 curveController.dropdown = curveSection:dropdown({
     name = "curve method",
     flag = "combat.curve_method",
-    values = curveMethods,
-    default = config.curve_method or "dot",
+    values = {"camera", "dot", "backwards", "slow", "random"},
+    default = config.curve_method or "camera",
     cb = function(curveMethod)
         local syncing = curveController.syncing
         spawnTask(function()
@@ -2114,7 +2188,7 @@ triggerbotState.fire = function(b)
     spawnTask(function()
         while true do
             preSimulation:Wait()
-            if tick() - start >= 0.9 or not triggerbotState.busy then
+            if tick() - start >= 1 or not triggerbotState.busy then
                 break
             end
         end
@@ -2143,175 +2217,97 @@ triggerbotState.set = function(val)
     end
 end
 
--- Spam Controller (Private Smart Clash & Aggressiveness)
+-- Spam Controller
 local spamController = {
     distance = 0,
     last_auto = 0,
     manual_on = false,
     manual_key = Enum.KeyCode[config.manual_spam] or Enum.KeyCode.E,
-    lastAutoFire = 0,
     lastManualFire = 0,
-    lastTick = 0,
-    prevBallDist = math.huge,
-    lastVel = Vector3.zero,
-    lastSpeed = 0,
-    clashUntil = 0,
-    lastTarget = nil,
-    lastFireDist = 99,
-    awayFrames = 0,
 }
 
-spamController.get_burst_interval = function(speed, pingSec, inClash)
-    local aggr = clampValue((config.spam_aggressiveness or 75) / 100, 0.1, 1.0)
-    local base = inClash and lerpValue(0.052, 0.028, aggr) or lerpValue(0.060, 0.036, aggr)
-    local pingBonus = clampValue(pingSec * 0.10, 0, 0.022)
-    local speedScale = clampValue((speed - 35) / 1500, -0.008, 0.012)
-    return clampValue(base + pingBonus + speedScale, 0.026, 0.075)
+spamController.get_interval = function()
+    local cps = clampValue(roundValue(tonumber(config.spam_cps) or 120), 50, 500)
+    return 1 / cps
+end
+
+spamController.perform = function(ctx)
+    local b = ballState.get()
+    local current = targetManager.current or targetManager.closest()
+    if not b then
+        return false
+    end
+    if not current or not current.PrimaryPart then
+        return false
+    end
+    local char = localPlayer.Character
+    local root = char and char.PrimaryPart
+    if not root then
+        return false
+    end
+    local vel = b.AssemblyLinearVelocity
+    local speed = vel.Magnitude
+    local offset = root.Position - ballState.position(b)
+    local dot = offset.Magnitude > 0 and (offset.Unit:Dot(speed > 0 and vel.Unit or Vector3.zero)) or 0
+    local distToTarget = localPlayer:DistanceFromCharacter(current.PrimaryPart.Position)
+    local window = ctx.Ping + minValue(speed / 6, 95)
+
+    if ctx.Entity_Properties and ctx.Entity_Properties.distance and ctx.Entity_Properties.distance > window then
+        return spamController.distance
+    end
+    if ctx.Ball_Properties and ctx.Ball_Properties.Distance and window < ctx.Ball_Properties.Distance then
+        return spamController.distance
+    end
+    if window < distToTarget then
+        return spamController.distance
+    end
+
+    spamController.distance = window - clampValue(dot, -1, 0) * (5 - minValue(speed / 5, 5))
+    return spamController.distance
 end
 
 spamController.auto_check = function()
     if not config.auto_spam or not _G.oxymod then return end
 
     local ball = ballState.get()
-    if not ball then
-        spamController.clashUntil = 0
-        spamController.awayFrames = 0
-        spamController.prevBallDist = math.huge
-        return
-    end
+    if not ball then return end
+    if not ball:FindFirstChild("zoomies") then return end
 
-    local zoomies = ball:FindFirstChild("zoomies")
-    if not zoomies then return end
+    targetManager.closest()
+    if not targetManager.current or not targetManager.current.PrimaryPart then return end
+
+    local now = tick()
+    local reach = spamController.perform({
+        Ball_Properties = ballState.props(),
+        Entity_Properties = targetManager.props(),
+        Ping = clampValue(dataPing:GetValue() / 10, 1, 16),
+    })
 
     local character = localPlayer.Character
-    local root = character and character.PrimaryPart
-    if not root then return end
-    if character:GetAttribute("Pulsed") then return end
+    local primaryPart = character and character.PrimaryPart
+    if not primaryPart then return end
 
+    local ballDist = (primaryPart.Position - ballState.position(ball)).Magnitude
     local attr = ball:GetAttribute("target")
     if not attr then return end
 
-    local now = tick()
-    local dt = now - (spamController.lastTick > 0 and spamController.lastTick or now)
-    if dt <= 0 or dt > 0.08 then dt = 0.016 end
-    spamController.lastTick = now
+    local targetDist = localPlayer:DistanceFromCharacter(targetManager.current.PrimaryPart.Position)
+    if targetDist > reach or ballDist > reach then return end
+    if character:GetAttribute("Pulsed") then return end
+    if attr == name and targetDist > 30 and ballDist > 30 then return end
 
-    local ballPos = ballState.position(ball)
-    local rootPos = root.Position
-    local offset = rootPos - ballPos
-    local ballDist = offset.Magnitude
-
-    local vel = ball.AssemblyLinearVelocity
-    local speed = vel.Magnitude
-    if speed < 0.5 then
-        vel = zoomies.VectorVelocity
-        speed = vel.Magnitude
-    end
-    if speed < 6 then return end
-    spamController.lastSpeed = speed
-
-    local velUnit = vel.Unit
-    local dirUnit = offset.Magnitude > 0.001 and offset.Unit or Vector3.zero
-    local dot = dirUnit:Dot(velUnit)
-
-    local isTarget = (attr == name)
-    spamController.lastTarget = attr
-
-    local radialSpeed = speed * maxValue(dot, 0.02)
-    local closingRate = (spamController.prevBallDist - ballDist) / dt
-    if spamController.prevBallDist == math.huge then closingRate = 0 end
-    spamController.prevBallDist = ballDist
-
-    local rawPing = getPingMs()
-    local pingSec = clampValue(rawPing / 1000, 0.005, 0.22)
-    local predictTime = pingSec * 0.90 + 0.005
-    local predictedDist = ballDist - radialSpeed * predictTime
-
-    local accel = 0
-    if spamController.lastVel.Magnitude > 1 then
-        accel = (vel - spamController.lastVel).Magnitude / dt
-    end
-    spamController.lastVel = vel
-
-    targetManager.closest()
-    local target = targetManager.current
-    local targetDist = (target and target.PrimaryPart) and localPlayer:DistanceFromCharacter(target.PrimaryPart.Position) or math.huge
-
-    local inClash = now < spamController.clashUntil
-    local spamInterval = spamController.get_burst_interval(speed, pingSec, inClash)
-    local aggrBonus = ((config.spam_aggressiveness or 75) - 50) * 0.04
-
-    if inClash then
-        local leaving = false
-        if ballDist > 15.5 + aggrBonus then
-            leaving = true
-        elseif not isTarget and ballDist > 12.0 and dot < -0.22 and closingRate < -2.0 then
-            leaving = true
-        elseif not isTarget and ballDist > 13.0 and predictedDist > 13.5 then
-            leaving = true
-        elseif speed < 4 and ballDist > 9.0 then
-            leaving = true
-        end
-
-        if leaving then
-            spamController.awayFrames = spamController.awayFrames + 1
-        else
-            spamController.awayFrames = 0
-        end
-
-        if spamController.awayFrames >= 5 then
-            spamController.clashUntil = 0
-            spamController.awayFrames = 0
-            return
-        end
-
-        if ballDist > 14.5 + aggrBonus then return end
-        if now - spamController.lastAutoFire < spamInterval then return end
-        if not target or not target.PrimaryPart or targetDist > 40 then return end
-
-        spamController.lastAutoFire = now
+    local threshold = clampValue(floorValue((config.spam_threshold or 3) + 0.5), 1, 3)
+    local interval = spamController.get_interval()
+    if ballDist <= reach and parryController.count > threshold and now - spamController.last_auto >= interval then
         spamController.last_auto = now
-        spamController.lastFireDist = ballDist
-        spamController.clashUntil = maxValue(spamController.clashUntil, now + 0.80)
         parryController.fire(true)
-        return
     end
-
-    spamController.awayFrames = 0
-
-    local closeRangeWindow = 11.5 + clampValue(speed / 115, 0, 6.0) + clampValue(pingSec * 14, 0, 2.5) + aggrBonus
-    local isUrgentClose = isTarget and (ballDist <= closeRangeWindow or predictedDist <= 9.8)
-    local isCloseCombat = targetDist <= 24 and ballDist <= 12.8 and (isTarget or dot > -0.10 or closingRate > 1.8)
-
-    if not (isUrgentClose or isCloseCombat) then return end
-    if config.smart_anti_curve ~= false and ballState.curved(ball) and ballDist > 6.8 then return end
-    if isTarget and dot < -0.05 and ballDist > 6.2 then return end
-    if isTarget and closingRate < -1.0 and ballDist > 6.8 then return end
-    if speed < 10 then return end
-
-    local timeToHit = radialSpeed > 1 and (maxValue(predictedDist, 0.1) / radialSpeed) or math.huge
-    local reactionWindow = pingSec + 0.016 + clampValue(accel / 1200, 0, 0.025)
-    if timeToHit > reactionWindow * 1.9 and ballDist > 6.8 then return end
-
-    if not target or not target.PrimaryPart or targetDist > 40 then return end
-    if now - spamController.lastAutoFire < spamInterval then return end
-
-    spamController.lastAutoFire = now
-    spamController.last_auto = now
-    spamController.lastFireDist = ballDist
-    spamController.clashUntil = now + 0.95
-    spamController.awayFrames = 0
-    parryController.fire(true)
 end
 
 spamController.set_auto = function(autoSpam)
     local enabled = (autoSpam == true)
     config.auto_spam = enabled
-    spamController.clashUntil = 0
-    spamController.awayFrames = 0
-    spamController.prevBallDist = math.huge
-    spamController.lastTick = 0
-    spamController.lastAutoFire = 0
+    spamController.last_auto = 0
 
     if runtimeConnections.auto_spam then
         runtimeConnections.auto_spam:Disconnect()
@@ -2337,11 +2333,7 @@ spamController.set_manual = function(val)
         runtimeConnections.manual_spam = preSimulation:Connect(function()
             if not spamController.manual_on then return end
             local now = tick()
-            local pingSec = clampValue(getPingMs() / 1000, 0.005, 0.22)
-            local b = ballState.get()
-            local z = b and b:FindFirstChild("zoomies")
-            local spd = z and z.VectorVelocity.Magnitude or 50
-            local interval = spamController.get_burst_interval(spd, pingSec, true)
+            local interval = spamController.get_interval()
             if now - spamController.lastManualFire < interval then return end
             spamController.lastManualFire = now
             parryController.fire(true)
@@ -2365,14 +2357,25 @@ spamSection:toggle({
 })
 
 spamSection:slider({
-    name = "aggressiveness",
-    flag = "combat.spam_aggressiveness",
-    min = 10,
-    max = 100,
-    default = config.spam_aggressiveness or 75,
-    suffix = "%",
-    cb = function(v)
-        config.spam_aggressiveness = roundValue(v)
+    name = "spam cps",
+    flag = "combat.spam_cps",
+    min = 50,
+    max = 500,
+    default = config.spam_cps or 120,
+    suffix = " cps",
+    cb = function(val)
+        config.spam_cps = clampValue(roundValue(tonumber(val) or 120), 50, 500)
+    end,
+})
+
+spamSection:slider({
+    name = "threshold",
+    flag = "combat.spam_threshold",
+    min = 1,
+    max = 3,
+    default = config.spam_threshold or 3,
+    cb = function(val)
+        config.spam_threshold = clampValue(floorValue(tonumber(val) or 3), 1, 3)
     end,
 })
 
@@ -2437,26 +2440,6 @@ visualSection:toggle({
     default = config.ability_esp or false,
     cb = function(v)
         abilityEspState:set(v == true)
-    end,
-})
-
-visualSection:toggle({
-    name = "distance",
-    flag = "visual.ability_esp_distance",
-    default = config.ability_esp_distance ~= false,
-    cb = function(v)
-        config.ability_esp_distance = (v == true)
-    end,
-})
-
-visualSection:toggle({
-    name = "ball trajectory",
-    flag = "visual.ball_tracer",
-    default = config.ball_tracer or false,
-    cb = function(v)
-        if setBallTracerEnabled then
-            setBallTracerEnabled(v == true)
-        end
     end,
 })
 
@@ -3308,7 +3291,7 @@ do
 end
 
 -- ═══════════════════════════════════════════════════════════
--- BALL STATS (PEAK + LIVE VELOCITY + PING)
+-- BALL STATS
 -- ═══════════════════════════════════════════════════════════
 local setBallStatsEnabled = nil
 
@@ -3337,12 +3320,12 @@ do
             ResetOnSpawn = false,
         })
         local TextLabel = createGuiInstance("TextLabel", {
-            Size = createUDim2(0.28, 0, 0.06, 0),
-            Position = createUDim2(0.65, 0, 0.1, 0),
-            TextSize = 22,
+            Size = createUDim2(0.2, 0, 0.05, 0),
+            Position = createUDim2(0.7, 0, 0.1, 0),
+            TextSize = 26,
             BackgroundTransparency = 1,
             TextColor3 = Color3.new(1, 1, 1),
-            Font = Enum.Font.Code,
+            Font = Enum.Font.Fantasy,
             Text = "waiting...",
             Parent = ScreenGui,
         })
@@ -3375,9 +3358,8 @@ do
             end
             if fastestBall then
                 local isLimit = maxSpd >= 2200
-                local pMs = roundValue(getPingMs())
-                TextLabel.Text = formatString("vel: %.0f | ping: %dms", maxSpd, pMs) .. (isLimit and " [LIMIT!]" or "")
-                TextLabel.TextColor3 = isLimit and Color3.new(1, 0.25, 0.25) or Color3.new(1, 1, 1)
+                TextLabel.Text = formatString("ball velocity: %.0f", maxSpd) .. (isLimit and " (LIMIT!)" or "")
+                TextLabel.TextColor3 = isLimit and Color3.new(1, 0, 0) or Color3.new(1, 1, 1)
             else
                 TextLabel.Text = "waiting..."
                 TextLabel.TextColor3 = Color3.new(1, 1, 1)
@@ -3390,6 +3372,184 @@ do
         flag = "misc.ball_debug",
         default = config.ball_debug or false,
         cb = setBallStatsEnabled,
+    })
+end
+
+-- ═══════════════════════════════════════════════════════════
+-- CHARACTER (HEADLESS & KORBLOX)
+-- ═══════════════════════════════════════════════════════════
+do
+    local savedMeshes = setmetatable({}, {__mode = "k"})
+    local savedHeadDecals = setmetatable({}, {__mode = "k"})
+    local savedHeadTransparency = setmetatable({}, {__mode = "k"})
+
+    local function getRightLeg(char)
+        return char and (char:FindFirstChild("RightLeg") or char:FindFirstChild("Right Leg"))
+    end
+
+    local function saveCharacterOriginals(char)
+        if not char then return end
+        local rightLeg = getRightLeg(char)
+        if rightLeg and not savedMeshes[char] then
+            local list = {}
+            for _, child in ipairs(rightLeg:GetChildren()) do
+                if child:IsA("SpecialMesh") then
+                    insertIntoTable(list, {
+                        MeshId = child.MeshId,
+                        TextureId = child.TextureId,
+                        Scale = child.Scale,
+                        Offset = child.Offset,
+                        VertexColor = child.VertexColor,
+                    })
+                end
+            end
+            savedMeshes[char] = list
+        end
+
+        local head = char:FindFirstChild("Head")
+        if head and savedHeadTransparency[char] == nil then
+            savedHeadTransparency[char] = head.Transparency
+            local decals = {}
+            for _, child in ipairs(head:GetChildren()) do
+                if child:IsA("Decal") then
+                    decals[child] = child.Transparency
+                end
+            end
+            savedHeadDecals[char] = decals
+        end
+    end
+
+    local function applyKorblox(char)
+        local rightLeg = getRightLeg(char)
+        if not rightLeg then return end
+        for _, child in ipairs(rightLeg:GetChildren()) do
+            if child:IsA("SpecialMesh") then
+                child:Destroy()
+            end
+        end
+        local mesh = createInstance("SpecialMesh")
+        mesh.MeshId = "rbxassetid://101851696"
+        mesh.TextureId = "rbxassetid://115727863"
+        mesh.Scale = createVector3(1, 1, 1)
+        mesh.Parent = rightLeg
+    end
+
+    local function restoreKorblox(char)
+        local rightLeg = getRightLeg(char)
+        if not rightLeg then return end
+        for _, child in ipairs(rightLeg:GetChildren()) do
+            if child:IsA("SpecialMesh") then
+                child:Destroy()
+            end
+        end
+        local list = savedMeshes[char]
+        if type(list) == "table" then
+            for _, data in ipairs(list) do
+                local mesh = createInstance("SpecialMesh")
+                mesh.MeshId = data.MeshId
+                mesh.TextureId = data.TextureId
+                mesh.Scale = data.Scale
+                mesh.Offset = data.Offset
+                mesh.VertexColor = data.VertexColor
+                mesh.Parent = rightLeg
+            end
+        end
+    end
+
+    local function applyHeadless(char)
+        local head = char and char:FindFirstChild("Head")
+        if not head then return end
+        head.Transparency = 1
+        for _, child in ipairs(head:GetChildren()) do
+            if child:IsA("Decal") then
+                child.Transparency = 1
+            end
+        end
+    end
+
+    local function restoreHeadless(char)
+        local head = char and char:FindFirstChild("Head")
+        if not head then return end
+        head.Transparency = savedHeadTransparency[char] ~= nil and savedHeadTransparency[char] or 0
+        local decals = savedHeadDecals[char]
+        for _, child in ipairs(head:GetChildren()) do
+            if child:IsA("Decal") then
+                child.Transparency = (decals and decals[child] ~= nil) and decals[child] or 0
+            end
+        end
+    end
+
+    local function applyCharacterCosmetics(char)
+        if not char then return end
+        saveCharacterOriginals(char)
+        local active = (_G.oxymod == true)
+        if active and config.korblox then
+            applyKorblox(char)
+        else
+            restoreKorblox(char)
+        end
+        if active and config.headless then
+            applyHeadless(char)
+        else
+            restoreHeadless(char)
+        end
+    end
+
+    local charAddedConn = localPlayer.CharacterAdded:Connect(function(newChar)
+        deferTask(function()
+            if _G.oxymod then
+                applyCharacterCosmetics(newChar)
+            end
+        end)
+    end)
+
+    characterCosmeticsController = {
+        set_headless = function(enabled)
+            config.headless = (enabled == true)
+            if localPlayer.Character then
+                applyCharacterCosmetics(localPlayer.Character)
+            end
+        end,
+        set_korblox = function(enabled)
+            config.korblox = (enabled == true)
+            if localPlayer.Character then
+                applyCharacterCosmetics(localPlayer.Character)
+            end
+        end,
+        refresh = function()
+            if localPlayer.Character then
+                applyCharacterCosmetics(localPlayer.Character)
+            end
+        end,
+        destroy = function()
+            if charAddedConn then
+                charAddedConn:Disconnect()
+                charAddedConn = nil
+            end
+            if localPlayer.Character then
+                saveCharacterOriginals(localPlayer.Character)
+                restoreKorblox(localPlayer.Character)
+                restoreHeadless(localPlayer.Character)
+            end
+        end,
+    }
+
+    characterSection:toggle({
+        name = "headless",
+        flag = "misc.character.headless",
+        default = config.headless or false,
+        cb = function(v)
+            characterCosmeticsController.set_headless(v)
+        end,
+    })
+
+    characterSection:toggle({
+        name = "korblox",
+        flag = "misc.character.korblox",
+        default = config.korblox or false,
+        cb = function(v)
+            characterCosmeticsController.set_korblox(v)
+        end,
     })
 end
 
@@ -3852,8 +4012,9 @@ syncAllTogglesFromConfig = function()
     parryState.set(config.auto_parry == true)
     spamController.set_auto(config.auto_spam == true)
     abilityEspState:set(config.ability_esp == true)
-    if setBallTracerEnabled then
-        setBallTracerEnabled(config.ball_tracer == true)
+    if parryVisController then
+        parryVisController.set_color(parryVisColor)
+        parryVisController.set_enabled(config.parry_visualize == true)
     end
     if setBallStatsEnabled then
         setBallStatsEnabled(config.ball_debug == true)
@@ -3864,13 +4025,15 @@ syncAllTogglesFromConfig = function()
     if setAntiLagEnabled then
         setAntiLagEnabled(config.antilag == true)
     end
+    if characterCosmeticsController then
+        characterCosmeticsController.refresh()
+    end
     if immortalController then
+        immortalController.set_mode(config.immortal_mode or "tri-step")
+        immortalController.set_icon_color(immortalIconColor)
         immortalController.set_enabled(config.immortal == true)
         immortalController.set_visualizer(config.immortal_visualizer ~= false)
-        immortalController.set_fake_cam(config.immortal_fake_cam ~= false)
-        immortalController.set_mode(config.immortal_mode or "weave")
-        immortalController.set_range(config.immortal_range or 15)
-        immortalController.set_speed(config.immortal_speed or 380)
+        immortalController.set_range(config.immortal_range or 14)
     end
     if inventoryUnlockManager and inventoryUnlockManager.ready then
         inventoryUnlockManager:set_enabled(config.unlock_all == true)
