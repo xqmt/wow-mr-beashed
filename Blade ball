@@ -167,11 +167,16 @@ local configStorage = {
         manual_spam = "E",
         triggerbot_key = "T",
         ability_esp = false,
+        disable_highlights = false,
         auto_parry = false,
         parry_visualize = false,
         parry_visualize_color = serializeColor(defaultParryVisColor),
         ball_debug = false,
         auto_spam = false,
+        infinity_detection = false,
+        death_slash_detection = false,
+        anti_phantom = false,
+        backwards_anti_curve = false,
         immortal = false,
         immortal_mode = "tri-step",
         immortal_visualizer = true,
@@ -356,6 +361,7 @@ local settingsTab = window:tab({name = "settings", icon = "sliders"})
 local combatPage = combatTab:page("main", {cols = 2})
 local parrySection = combatPage:section({name = "parry", side = "left"})
 local spamSection = combatPage:section({name = "spam", side = "left"})
+local detectedSection = combatPage:section({name = "detected", side = "left"})
 local curveSection = combatPage:section({name = "curve", side = "right"})
 local immortalSection = combatPage:section({name = "immortal", side = "right"})
 local hotkeysSection = combatPage:section({name = "hotkeys", side = "right"})
@@ -375,6 +381,8 @@ local sessionSection = settingsTab:page("session"):section({name = "session"})
 local immortalController = nil
 local parryVisController = nil
 local characterCosmeticsController = nil
+local noRenderDestroy = nil
+local setDisableHighlightsEnabled = nil
 local syncAllTogglesFromConfig = nil
 
 local function cleanupAllFeatures()
@@ -386,6 +394,12 @@ local function cleanupAllFeatures()
     end
     if characterCosmeticsController then
         pcall(characterCosmeticsController.destroy)
+    end
+    if noRenderDestroy then
+        pcall(noRenderDestroy)
+    end
+    if setDisableHighlightsEnabled then
+        pcall(setDisableHighlightsEnabled, false)
     end
 end
 
@@ -462,6 +476,84 @@ local ballState = {
     positions = {},
     replicator = nil,
 }
+
+local detectionState = {
+    infinity_active = false,
+    death_slash_active = false,
+    phantom_data = nil,
+}
+
+pcall(function()
+    local infinityRemote = remotes and remotes:FindFirstChild("InfinityBall")
+    if infinityRemote and infinityRemote:IsA("RemoteEvent") then
+        infinityRemote.OnClientEvent:Connect(function(_, status)
+            detectionState.infinity_active = (status == true)
+        end)
+    end
+end)
+
+pcall(function()
+    local deathRemote = remotes and remotes:FindFirstChild("DeathBall")
+    if deathRemote and deathRemote:IsA("RemoteEvent") then
+        deathRemote.OnClientEvent:Connect(function(_, status)
+            detectionState.death_slash_active = (status == true)
+        end)
+    end
+end)
+
+pcall(function()
+    local activateAbility = remotes and remotes:FindFirstChild("ActivateAbility")
+    if activateAbility and activateAbility:IsA("RemoteEvent") then
+        activateAbility.OnClientEvent:Connect(function(abilityUser, targetChar)
+            if config.anti_phantom and abilityUser and abilityUser:GetAttribute("Ability") == "Phantom" and targetChar == localPlayer.Character then
+                detectionState.phantom_data = {
+                    user = abilityUser,
+                    expires = tick() + 1.25,
+                    last_pos = nil,
+                    released = false,
+                }
+            end
+        end)
+    end
+end)
+
+local function isPhantomPending(ball)
+    local pData = detectionState.phantom_data
+    if not pData then return false end
+    if tick() >= pData.expires then
+        detectionState.phantom_data = nil
+        return false
+    end
+    local enemy = pData.user
+    if not enemy or not enemy.Parent then
+        return false
+    end
+    if tostring(ball and ball:GetAttribute("target") or "") ~= enemy.Name then
+        pData.last_pos = nil
+        pData.released = false
+        return false
+    end
+    local bPos = ballState.position(ball)
+    if pData.last_pos and (bPos - pData.last_pos).Magnitude > 0.01 then
+        pData.released = true
+    end
+    pData.last_pos = bPos
+    return not pData.released
+end
+
+local function isBackwardsCurve(ball, rootPos, vel)
+    if not ball or not rootPos or not vel or vel.Magnitude < 1 then
+        return false
+    end
+    local bPos = ballState.position(ball)
+    local diff = rootPos - bPos
+    if diff.Magnitude < 0.01 then
+        return false
+    end
+    local toPlayer = diff.Unit
+    local moveDir = vel.Unit
+    return moveDir:Dot(toPlayer) < -0.3
+end
 
 local function lerpValue(a, b, t)
     return a + (b - a) * t
@@ -1646,6 +1738,79 @@ abilityEspState.set = function(self, on)
 end
 
 -- ═══════════════════════════════════════════════════════════
+-- DISABLE HIGHLIGHTS
+-- ═══════════════════════════════════════════════════════════
+do
+    local highlightConn = nil
+
+    local function isOwnHighlight(obj)
+        local pg = localPlayer and localPlayer:FindFirstChild("PlayerGui")
+        if pg and obj:IsDescendantOf(pg) then
+            return true
+        end
+        if type(gethui) == "function" then
+            local ok, hui = pcall(gethui)
+            if ok and hui and obj:IsDescendantOf(hui) then
+                return true
+            end
+        end
+        return false
+    end
+
+    local function stripHighlight(obj)
+        if not obj or not obj:IsA("Highlight") or isOwnHighlight(obj) then
+            return
+        end
+        pcall(function()
+            obj.Enabled = false
+            obj.Adornee = nil
+            obj:Destroy()
+        end)
+    end
+
+    local function purgeExistingHighlights()
+        for _, obj in ipairs(Workspace:GetDescendants()) do
+            if obj:IsA("Highlight") then
+                stripHighlight(obj)
+            end
+        end
+    end
+
+    setDisableHighlightsEnabled = function(enabled)
+        local active = (enabled == true) and (_G.oxymod == true)
+        config.disable_highlights = (enabled == true)
+
+        if highlightConn then
+            highlightConn:Disconnect()
+            highlightConn = nil
+        end
+
+        if not active then
+            return
+        end
+
+        purgeExistingHighlights()
+        highlightConn = Workspace.DescendantAdded:Connect(function(obj)
+            if not config.disable_highlights or not _G.oxymod then
+                return
+            end
+            if obj:IsA("Highlight") then
+                stripHighlight(obj)
+            end
+        end)
+    end
+
+    visualSection:toggle({
+        name = "disable highlights",
+        flag = "visual.disable_highlights",
+        default = config.disable_highlights or false,
+        cb = function(v)
+            setDisableHighlightsEnabled(v == true)
+        end,
+    })
+end
+
+-- ═══════════════════════════════════════════════════════════
 -- PARRY, CURVE, TRIGGERBOT & SPAM
 -- ═══════════════════════════════════════════════════════════
 local triggerbotState = {
@@ -1788,7 +1953,15 @@ parryState.check = function()
                 end
 
                 local skipBall = false
-                if tornado and now - ballState.state.AerodynamicTime < tornadoTime + 0.314159 then
+                if config.infinity_detection and detectionState.infinity_active then
+                    skipBall = true
+                elseif config.death_slash_detection and detectionState.death_slash_active then
+                    skipBall = true
+                elseif config.anti_phantom and isPhantomPending(b) then
+                    skipBall = true
+                elseif config.backwards_anti_curve and isBackwardsCurve(b, pos, zoomies.VectorVelocity) then
+                    skipBall = true
+                elseif tornado and now - ballState.state.AerodynamicTime < tornadoTime + 0.314159 then
                     skipBall = true
                 elseif mainTarget == name and ballState.curved(b) then
                     skipBall = true
@@ -2036,6 +2209,45 @@ parrySection:toggle({
                 targetManager.pick_random()
             end)
         end
+    end,
+})
+
+detectedSection:toggle({
+    name = "Infinity Detection",
+    flag = "combat.detected.infinity",
+    default = config.infinity_detection or false,
+    cb = function(v)
+        config.infinity_detection = (v == true)
+    end,
+})
+
+detectedSection:toggle({
+    name = "Death Slash Detection",
+    flag = "combat.detected.death_slash",
+    default = config.death_slash_detection or false,
+    cb = function(v)
+        config.death_slash_detection = (v == true)
+    end,
+})
+
+detectedSection:toggle({
+    name = "Anti-Phantom",
+    flag = "combat.detected.anti_phantom",
+    default = config.anti_phantom or false,
+    cb = function(v)
+        config.anti_phantom = (v == true)
+        if not config.anti_phantom then
+            detectionState.phantom_data = nil
+        end
+    end,
+})
+
+detectedSection:toggle({
+    name = "Backwards Anti-Curve",
+    flag = "combat.detected.backwards_anti_curve",
+    default = config.backwards_anti_curve or false,
+    cb = function(v)
+        config.backwards_anti_curve = (v == true)
     end,
 })
 
@@ -3554,13 +3766,16 @@ do
 end
 
 -- ═══════════════════════════════════════════════════════════
--- NO RENDER
+-- NO RENDER (NEW VERSION)
 -- ═══════════════════════════════════════════════════════════
 local noRenderEnable = nil
 
 do
     local noRenderConnections = {}
     local noRenderCache = {}
+    local noRenderEnabled = false
+    local noRenderTransparency = NumberSequence.new(1)
+
     local noRenderStorage = {
         Spawn = true,
         Rhythm = true,
@@ -3568,6 +3783,7 @@ do
         Map = true,
         UiClaimer = true,
     }
+
     local noRenderClasses = {
         ParticleEmitter = true,
         Beam = true,
@@ -3579,7 +3795,7 @@ do
         SpotLight = true,
         SurfaceLight = true,
     }
-    local noRenderTransparency = NumberSequence.new(1)
+
     local noRenderPaths = {
         "Workspace.Spawn.Limited",
         "Workspace.Spawn.ItemDuelsNPC",
@@ -3595,20 +3811,31 @@ do
         "Workspace.Rhythm.Runtime.Map.Visuals",
         "Workspace.Rhythm.Track",
     }
-    local noRenderNeighbors = {}
 
     local function noRenderIsSound(obj)
         local className = obj.ClassName
-        return className == "Sound" or className:find("Audio", 1, true) ~= nil
+        return className == "Sound"
+            or className == "SoundGroup"
+            or className:find("Audio", 1, true) ~= nil
+    end
+
+    local function noRenderHasSoundDescendant(obj)
+        for _, desc in ipairs(obj:GetDescendants()) do
+            if noRenderIsSound(desc) then
+                return true
+            end
+        end
+        return false
     end
 
     local function noRenderIsGui(obj)
-        return obj:IsDescendantOf(localPlayer:WaitForChild("PlayerGui"))
+        local pg = localPlayer and localPlayer:FindFirstChild("PlayerGui")
+        return pg and obj:IsDescendantOf(pg)
     end
 
     local function noRenderIsWorkspaceStorage(obj)
         local current = obj
-        while current and current.Parent and current.Parent ~= workspace do
+        while current and current.Parent and current.Parent ~= Workspace do
             current = current.Parent
         end
         return current and noRenderStorage[current.Name] == true
@@ -3630,97 +3857,116 @@ do
             if noRenderCache[obj][prop] == nil then
                 noRenderCache[obj][prop] = obj[prop]
             end
-            obj[prop] = value
+            pcall(function()
+                obj[prop] = value
+            end)
         end
     end
 
     local function noRenderRestore()
         for obj, props in pairs(noRenderCache) do
-            if obj.Parent then
+            if obj and obj.Parent then
                 for prop, value in pairs(props) do
-                    pcall(function() obj[prop] = value end)
+                    pcall(function()
+                        obj[prop] = value
+                    end)
                 end
             end
         end
-        table.clear(noRenderCache)
+        clearTable(noRenderCache)
     end
 
-    local function noRenderApply(obj, isWorkspace, isGui)
-        if noRenderIsSound(obj) or obj:IsA("Highlight") then return end
+    local function noRenderApply(obj, isGui)
+        if not obj or not obj.Parent or noRenderIsSound(obj) or obj:IsA("Highlight") then
+            return
+        end
         if noRenderClasses[obj.ClassName] then
             if obj:IsA("ParticleEmitter") or obj:IsA("Beam") or obj:IsA("Trail") then
-                noRenderStore(obj, {Enabled = false, Transparency = noRenderTransparency})
+                noRenderStore(obj, { Enabled = false, Transparency = noRenderTransparency })
             else
-                noRenderStore(obj, {Enabled = false})
+                noRenderStore(obj, { Enabled = false })
             end
-            if obj:IsA("ParticleEmitter") then obj:Clear() end
+            if obj:IsA("ParticleEmitter") then
+                pcall(function()
+                    obj:Clear()
+                end)
+            end
         elseif obj:IsA("Decal") or obj:IsA("Texture") then
-            noRenderStore(obj, {Transparency = 1})
+            noRenderStore(obj, { Transparency = 1 })
         elseif isGui and (obj:IsA("SurfaceGui") or obj:IsA("BillboardGui")) then
-            noRenderStore(obj, {Enabled = false})
+            noRenderStore(obj, { Enabled = false })
         elseif obj:IsA("BasePart") then
-            if noRenderIsGui(obj) then return end
-            if isWorkspace or (noRenderIsPath(obj) or noRenderNeighbors[obj]) then
-                noRenderStore(obj, {LocalTransparencyModifier = 1, CanCollide = false, CanTouch = false, CanQuery = false})
+            if noRenderIsGui(obj) or noRenderHasSoundDescendant(obj) then
+                return
+            end
+            if noRenderIsPath(obj) then
+                noRenderStore(obj, { LocalTransparencyModifier = 1 })
             end
         end
     end
 
     local function noRenderProcess(obj)
-        if not obj or not obj.Parent then return end
-        if obj:IsDescendantOf(workspace) then
+        if not obj or not obj.Parent or noRenderIsSound(obj) then
+            return
+        end
+        if obj:IsDescendantOf(Workspace) then
             local root = obj
-            while root and root.Parent and root.Parent ~= workspace do
+            while root and root.Parent and root.Parent ~= Workspace do
                 root = root.Parent
             end
             if root and (root.Name:find("PortalFor_") or root.Name:find("WaypointFor_") or noRenderStorage[root.Name]) then
                 return
             end
-            noRenderApply(obj, true, false)
+            noRenderApply(obj, false)
         elseif (obj:IsA("SurfaceGui") or obj:IsA("BillboardGui")) and noRenderIsWorkspaceStorage(obj) then
-            noRenderApply(obj, false, true)
+            noRenderApply(obj, true)
         else
-            noRenderApply(obj, false, false)
+            noRenderApply(obj, false)
         end
     end
 
     noRenderEnable = function(enabled)
         local active = (enabled == true) and (_G.oxymod == true)
-        config.no_render = (enabled == true)
+        noRenderEnabled = (enabled == true)
+        config.no_render = noRenderEnabled
+
         for _, conn in ipairs(noRenderConnections) do
-            if conn.Connected then conn:Disconnect() end
-        end
-        table.clear(noRenderConnections)
-        if not active then
-            noRenderRestore()
-            table.clear(noRenderNeighbors)
-            return
-        end
-        local descendants = workspace:GetDescendants()
-        table.clear(noRenderNeighbors)
-        for _, obj in ipairs(descendants) do
-            if noRenderIsSound(obj) then
-                local part = obj:FindFirstAncestorWhichIsA("BasePart")
-                if part and not noRenderIsGui(part) then
-                    noRenderNeighbors[part] = true
-                end
+            if conn.Connected then
+                conn:Disconnect()
             end
         end
+        clearTable(noRenderConnections)
+
+        if not active then
+            noRenderRestore()
+            return
+        end
+
+        local descendants = Workspace:GetDescendants()
         for _, obj in ipairs(descendants) do
             noRenderProcess(obj)
         end
-        noRenderConnections[#noRenderConnections + 1] = workspace.DescendantAdded:Connect(function(obj)
-            if not config.no_render or not _G.oxymod then return end
+
+        noRenderConnections[#noRenderConnections + 1] = Workspace.DescendantAdded:Connect(function(obj)
+            if not noRenderEnabled or not _G.oxymod then
+                return
+            end
             if noRenderIsSound(obj) then
-                local part = obj:FindFirstAncestorWhichIsA("BasePart")
-                if part and not noRenderIsGui(part) then
-                    noRenderNeighbors[part] = true
-                    noRenderApply(part, false, false)
-                end
                 return
             end
             noRenderProcess(obj)
         end)
+    end
+
+    noRenderDestroy = function()
+        noRenderEnabled = false
+        for _, conn in ipairs(noRenderConnections) do
+            if conn.Connected then
+                conn:Disconnect()
+            end
+        end
+        clearTable(noRenderConnections)
+        noRenderRestore()
     end
 
     miscSection:toggle({
@@ -4012,6 +4258,9 @@ syncAllTogglesFromConfig = function()
     parryState.set(config.auto_parry == true)
     spamController.set_auto(config.auto_spam == true)
     abilityEspState:set(config.ability_esp == true)
+    if setDisableHighlightsEnabled then
+        setDisableHighlightsEnabled(config.disable_highlights == true)
+    end
     if parryVisController then
         parryVisController.set_color(parryVisColor)
         parryVisController.set_enabled(config.parry_visualize == true)
