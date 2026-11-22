@@ -2189,7 +2189,7 @@ parrySection:slider({
     min = 1,
     max = 100,
     default = config.accuracy or 100,
-    suffix = "",
+    suffix = "%",
     cb = function(accuracy)
         parryState.accuracy = (accuracy - 1) * 0.015151515151515152
         config.accuracy = accuracy
