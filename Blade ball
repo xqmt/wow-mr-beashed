@@ -194,6 +194,8 @@ local configStorage = {
         no_render = false,
         headless = false,
         korblox = false,
+        avatar_spoof = false,
+        avatar_id = "",
         device_spoof_type = "PC",
         ability_esp_icon = true,
         ability_esp_cooldown = true,
@@ -1325,7 +1327,6 @@ do
             return offset, tangent * spd, stepIndex
         end
 
-        -- default: "tri-step"
         local stepIndex = floorValue(t / immortalCfg.StepInterval) % 3
         if stepIndex == 0 then
             return (-rv * radius) + (lv * (radius * 0.5)), -rv * spd, stepIndex
@@ -3588,12 +3589,28 @@ do
 end
 
 -- ═══════════════════════════════════════════════════════════
--- CHARACTER (HEADLESS & KORBLOX)
+-- CHARACTER (HEADLESS, KORBLOX & AVATAR SPOOF)
 -- ═══════════════════════════════════════════════════════════
 do
     local savedMeshes = setmetatable({}, {__mode = "k"})
     local savedHeadDecals = setmetatable({}, {__mode = "k"})
     local savedHeadTransparency = setmetatable({}, {__mode = "k"})
+    local charWatchConns = {}
+
+    local avatarSpoofState = {
+        targetUserId = nil,
+        appliedUserId = nil,
+        applying = false,
+        killFeedConn = nil,
+        gen = 0,
+    }
+
+    local function clearCharWatchers()
+        for _, conn in ipairs(charWatchConns) do
+            pcall(function() conn:Disconnect() end)
+        end
+        clearTable(charWatchConns)
+    end
 
     local function getRightLeg(char)
         return char and (char:FindFirstChild("RightLeg") or char:FindFirstChild("Right Leg"))
@@ -3634,6 +3651,10 @@ do
     local function applyKorblox(char)
         local rightLeg = getRightLeg(char)
         if not rightLeg then return end
+        local existing = rightLeg:FindFirstChildOfClass("SpecialMesh")
+        if existing and existing.MeshId == "rbxassetid://101851696" and existing.TextureId == "rbxassetid://115727863" then
+            return
+        end
         for _, child in ipairs(rightLeg:GetChildren()) do
             if child:IsA("SpecialMesh") then
                 child:Destroy()
@@ -3671,9 +3692,11 @@ do
     local function applyHeadless(char)
         local head = char and char:FindFirstChild("Head")
         if not head then return end
-        head.Transparency = 1
+        if head.Transparency ~= 1 then
+            head.Transparency = 1
+        end
         for _, child in ipairs(head:GetChildren()) do
-            if child:IsA("Decal") then
+            if child:IsA("Decal") and child.Transparency ~= 1 then
                 child.Transparency = 1
             end
         end
@@ -3692,7 +3715,7 @@ do
     end
 
     local function applyCharacterCosmetics(char)
-        if not char then return end
+        if not char or not char.Parent then return end
         saveCharacterOriginals(char)
         local active = (_G.oxymod == true)
         if active and config.korblox then
@@ -3707,41 +3730,375 @@ do
         end
     end
 
-    local charAddedConn = localPlayer.CharacterAdded:Connect(function(newChar)
-        deferTask(function()
-            if _G.oxymod then
+    local function bindCharacterLiveWatchers(char)
+        clearCharWatchers()
+        if not char then return end
+
+        local head = char:FindFirstChild("Head")
+        if head then
+            charWatchConns[#charWatchConns + 1] = head:GetPropertyChangedSignal("Transparency"):Connect(function()
+                if _G.oxymod and config.headless and head.Transparency ~= 1 then
+                    head.Transparency = 1
+                end
+            end)
+            charWatchConns[#charWatchConns + 1] = head.ChildAdded:Connect(function(child)
+                if _G.oxymod and config.headless and child:IsA("Decal") then
+                    child.Transparency = 1
+                end
+            end)
+            for _, child in ipairs(head:GetChildren()) do
+                if child:IsA("Decal") then
+                    charWatchConns[#charWatchConns + 1] = child:GetPropertyChangedSignal("Transparency"):Connect(function()
+                        if _G.oxymod and config.headless and child.Transparency ~= 1 then
+                            child.Transparency = 1
+                        end
+                    end)
+                end
+            end
+        end
+
+        local rightLeg = getRightLeg(char)
+        if rightLeg then
+            charWatchConns[#charWatchConns + 1] = rightLeg.ChildAdded:Connect(function(child)
+                if _G.oxymod and config.korblox and child:IsA("SpecialMesh") then
+                    if child.MeshId ~= "rbxassetid://101851696" then
+                        deferTask(function()
+                            if _G.oxymod and config.korblox and char.Parent then
+                                applyKorblox(char)
+                            end
+                        end)
+                    end
+                end
+            end)
+        end
+    end
+
+    local function weldAccessoryToChar(accessory, char)
+        local handle = accessory:FindFirstChild("Handle")
+        if not handle then return end
+        local attachment = handle:FindFirstChildOfClass("Attachment")
+        if not attachment then return end
+        local target = char:FindFirstChild(attachment.Name, true)
+        if not target or not target.Parent then return end
+        local weld = createInstance("Weld")
+        weld.Part0 = handle
+        weld.Part1 = target.Parent
+        weld.C0 = attachment.CFrame
+        weld.C1 = target.CFrame
+        weld.Parent = handle
+        handle.Anchored = false
+    end
+
+    local function getPartMeshId(part)
+        if part:IsA("MeshPart") then
+            return part.MeshId
+        end
+        local sm = part:FindFirstChildOfClass("SpecialMesh")
+        return sm and sm.MeshId or ""
+    end
+
+    local function applyAvatarToChar(char, targetUserId, forceReapply)
+        if not char or not char.Parent or not targetUserId then return end
+        local hum = char:FindFirstChildOfClass("Humanoid") or char:WaitForChild("Humanoid", 5)
+        if not hum or hum.Health <= 0 then return end
+        if avatarSpoofState.applying then return end
+        if not forceReapply and char:GetAttribute("_OxymodAvatarApplied") == targetUserId then
+            applyCharacterCosmetics(char)
+            return
+        end
+
+        avatarSpoofState.gen += 1
+        local myGen = avatarSpoofState.gen
+        avatarSpoofState.applying = true
+        char:SetAttribute("_OxymodAvatarApplied", targetUserId)
+
+        spawnTask(function()
+            local okDesc, desc = pcall(function()
+                return Players:GetHumanoidDescriptionFromUserId(targetUserId)
+            end)
+            if myGen ~= avatarSpoofState.gen or not okDesc or not desc or not char.Parent or not _G.oxymod then
+                if myGen == avatarSpoofState.gen then
+                    char:SetAttribute("_OxymodAvatarApplied", nil)
+                    avatarSpoofState.applying = false
+                end
+                return
+            end
+
+            local okModel, model = pcall(function()
+                return Players:CreateHumanoidModelFromDescription(desc, hum.RigType)
+            end)
+            if myGen ~= avatarSpoofState.gen or not okModel or not model or not char.Parent or not _G.oxymod then
+                if model then pcall(function() model:Destroy() end) end
+                if myGen == avatarSpoofState.gen then
+                    char:SetAttribute("_OxymodAvatarApplied", nil)
+                    avatarSpoofState.applying = false
+                end
+                return
+            end
+
+            pcall(function()
+                for _, child in ipairs(char:GetChildren()) do
+                    if child:IsA("Accessory")
+                        or child:IsA("Shirt")
+                        or child:IsA("Pants")
+                        or child:IsA("ShirtGraphic")
+                        or child:IsA("BodyColors")
+                        or child:IsA("CharacterMesh") then
+                        child:Destroy()
+                    end
+                end
+
+                for _, child in ipairs(model:GetChildren()) do
+                    if child:IsA("BasePart") and child.Name ~= "HumanoidRootPart" then
+                        local mine = char:FindFirstChild(child.Name)
+                        if mine and getPartMeshId(child) ~= getPartMeshId(mine) then
+                            local sm = mine:FindFirstChildOfClass("SpecialMesh")
+                            if sm then sm:Destroy() end
+                            local sm2 = child:FindFirstChildOfClass("SpecialMesh")
+                            if sm2 then sm2:Clone().Parent = mine end
+                            if child:IsA("MeshPart") and mine:IsA("MeshPart") then
+                                mine.MeshId = child.MeshId
+                                mine.TextureID = child.TextureID
+                            end
+                        end
+                    elseif child:IsA("CharacterMesh") then
+                        child:Clone().Parent = char
+                    end
+                end
+
+                for _, child in ipairs(model:GetChildren()) do
+                    if child:IsA("Shirt")
+                        or child:IsA("Pants")
+                        or child:IsA("ShirtGraphic")
+                        or child:IsA("BodyColors") then
+                        child:Clone().Parent = char
+                    end
+                end
+
+                for _, child in ipairs(model:GetChildren()) do
+                    if child:IsA("Accessory") then
+                        local clone = child:Clone()
+                        hum:AddAccessory(clone)
+                        weldAccessoryToChar(clone, char)
+                    end
+                end
+
+                local head = char:FindFirstChild("Head")
+                local head2 = model:FindFirstChild("Head")
+                if head and head2 then
+                    local decal = head:FindFirstChildOfClass("Decal")
+                    local decal2 = head2:FindFirstChildOfClass("Decal")
+                    if decal2 then
+                        if decal then
+                            decal.Texture = decal2.Texture
+                        else
+                            decal2:Clone().Parent = head
+                        end
+                    elseif decal then
+                        decal:Destroy()
+                    end
+                end
+            end)
+
+            pcall(function() model:Destroy() end)
+            if myGen ~= avatarSpoofState.gen then return end
+
+            avatarSpoofState.appliedUserId = targetUserId
+            avatarSpoofState.applying = false
+
+            savedMeshes[char] = nil
+            savedHeadDecals[char] = nil
+            savedHeadTransparency[char] = nil
+            applyCharacterCosmetics(char)
+            bindCharacterLiveWatchers(char)
+        end)
+    end
+
+    local function resolveAvatarUserId(rawInput, callback)
+        local trimmed = tostring(rawInput or ""):match("^%s*(.-)%s*$")
+        if trimmed == "" then
+            callback(nil)
+            return
+        end
+        local numericId = tonumber(trimmed)
+        if numericId and numericId > 0 then
+            callback(floorValue(numericId))
+            return
+        end
+        spawnTask(function()
+            local ok, resolved = pcall(function()
+                return Players:GetUserIdFromNameAsync(trimmed)
+            end)
+            if ok and tonumber(resolved) then
+                callback(floorValue(tonumber(resolved)))
+            else
+                callback(nil)
+            end
+        end)
+    end
+
+    local function handleRespawnCharacter(newChar)
+        if not _G.oxymod or not newChar then return end
+        spawnTask(function()
+            local hum = newChar:FindFirstChildOfClass("Humanoid") or newChar:WaitForChild("Humanoid", 6)
+            local head = newChar:FindFirstChild("Head") or newChar:WaitForChild("Head", 6)
+            if not hum or not head or not newChar.Parent or not _G.oxymod then return end
+            task.wait(0.15)
+            if not newChar.Parent or not _G.oxymod then return end
+
+            if config.avatar_spoof then
+                local uid = avatarSpoofState.targetUserId
+                if not uid and config.avatar_id and config.avatar_id ~= "" then
+                    local num = tonumber(config.avatar_id:match("^%s*(.-)%s*$"))
+                    if num and num > 0 then
+                        uid = floorValue(num)
+                        avatarSpoofState.targetUserId = uid
+                    end
+                end
+                if uid then
+                    applyAvatarToChar(newChar, uid, true)
+                else
+                    applyCharacterCosmetics(newChar)
+                    bindCharacterLiveWatchers(newChar)
+                end
+            else
+                applyCharacterCosmetics(newChar)
+                bindCharacterLiveWatchers(newChar)
+            end
+
+            task.wait(0.35)
+            if newChar.Parent and _G.oxymod then
                 applyCharacterCosmetics(newChar)
             end
         end)
-    end)
+    end
+
+    local function bindAvatarSpoofListeners()
+        if not avatarSpoofState.killFeedConn then
+            pcall(function()
+                local pg = localPlayer:FindFirstChild("PlayerGui")
+                local kf = pg and pg:FindFirstChild("KillFeed")
+                local frame = kf and kf:FindFirstChild("Frame")
+                if frame then
+                    avatarSpoofState.killFeedConn = frame.ChildAdded:Connect(function(child)
+                        local uid = avatarSpoofState.targetUserId
+                        if not _G.oxymod or not config.avatar_spoof or not uid then return end
+                        local holder = child:FindFirstChild("Holder")
+                        if holder and holder:FindFirstChild("Left") then
+                            local vec = holder.Left:FindFirstChild("Vector")
+                            if vec then
+                                vec.Image = "rbxthumb://type=AvatarHeadShot&id=" .. tostring(uid) .. "&w=100&h=100"
+                            end
+                        end
+                    end)
+                end
+            end)
+        end
+    end
+
+    local function unbindAvatarSpoofListeners()
+        if avatarSpoofState.killFeedConn then
+            avatarSpoofState.killFeedConn:Disconnect()
+            avatarSpoofState.killFeedConn = nil
+        end
+    end
+
+    local charAddedConn = localPlayer.CharacterAdded:Connect(handleRespawnCharacter)
 
     characterCosmeticsController = {
         set_headless = function(enabled)
             config.headless = (enabled == true)
             if localPlayer.Character then
                 applyCharacterCosmetics(localPlayer.Character)
+                bindCharacterLiveWatchers(localPlayer.Character)
             end
         end,
         set_korblox = function(enabled)
             config.korblox = (enabled == true)
             if localPlayer.Character then
                 applyCharacterCosmetics(localPlayer.Character)
+                bindCharacterLiveWatchers(localPlayer.Character)
+            end
+        end,
+        set_avatar_spoof = function(enabled)
+            local active = (enabled == true) and (_G.oxymod == true)
+            config.avatar_spoof = (enabled == true)
+            if not active then
+                avatarSpoofState.gen += 1
+                avatarSpoofState.applying = false
+                local hadApplied = (avatarSpoofState.appliedUserId ~= nil) or (avatarSpoofState.targetUserId ~= nil)
+                avatarSpoofState.targetUserId = nil
+                avatarSpoofState.appliedUserId = nil
+                unbindAvatarSpoofListeners()
+                if hadApplied and localPlayer.Character then
+                    localPlayer.Character:SetAttribute("_OxymodAvatarApplied", nil)
+                    applyAvatarToChar(localPlayer.Character, localPlayer.UserId, true)
+                end
+                return
+            end
+
+            resolveAvatarUserId(config.avatar_id, function(uid)
+                if not config.avatar_spoof or not _G.oxymod then return end
+                if not uid then
+                    notificationService:notify({
+                        title = "avatar spoof",
+                        content = "enter valid user id or username",
+                        duration = 3,
+                    })
+                    return
+                end
+                avatarSpoofState.targetUserId = uid
+                bindAvatarSpoofListeners()
+                if localPlayer.Character then
+                    applyAvatarToChar(localPlayer.Character, uid, false)
+                end
+            end)
+        end,
+        set_avatar_id = function(val)
+            config.avatar_id = tostring(val or "")
+            if config.avatar_spoof and _G.oxymod then
+                resolveAvatarUserId(config.avatar_id, function(uid)
+                    if not config.avatar_spoof or not _G.oxymod then return end
+                    if uid then
+                        avatarSpoofState.targetUserId = uid
+                        bindAvatarSpoofListeners()
+                        if localPlayer.Character then
+                            applyAvatarToChar(localPlayer.Character, uid, true)
+                        end
+                    end
+                end)
             end
         end,
         refresh = function()
             if localPlayer.Character then
                 applyCharacterCosmetics(localPlayer.Character)
+                bindCharacterLiveWatchers(localPlayer.Character)
+            end
+            if _G.oxymod and config.avatar_spoof then
+                characterCosmeticsController.set_avatar_spoof(true)
             end
         end,
         destroy = function()
+            avatarSpoofState.gen += 1
+            avatarSpoofState.applying = false
+            clearCharWatchers()
             if charAddedConn then
                 charAddedConn:Disconnect()
                 charAddedConn = nil
             end
+            unbindAvatarSpoofListeners()
+            local hadSpoof = (avatarSpoofState.appliedUserId ~= nil) or (avatarSpoofState.targetUserId ~= nil)
+            avatarSpoofState.targetUserId = nil
+            avatarSpoofState.appliedUserId = nil
             if localPlayer.Character then
-                saveCharacterOriginals(localPlayer.Character)
-                restoreKorblox(localPlayer.Character)
-                restoreHeadless(localPlayer.Character)
+                localPlayer.Character:SetAttribute("_OxymodAvatarApplied", nil)
+                if hadSpoof then
+                    applyAvatarToChar(localPlayer.Character, localPlayer.UserId, true)
+                else
+                    saveCharacterOriginals(localPlayer.Character)
+                    restoreKorblox(localPlayer.Character)
+                    restoreHeadless(localPlayer.Character)
+                end
             end
         end,
     }
@@ -3761,6 +4118,25 @@ do
         default = config.korblox or false,
         cb = function(v)
             characterCosmeticsController.set_korblox(v)
+        end,
+    })
+
+    characterSection:toggle({
+        name = "avatar spoof",
+        flag = "misc.character.avatar_spoof",
+        default = config.avatar_spoof or false,
+        cb = function(v)
+            characterCosmeticsController.set_avatar_spoof(v)
+        end,
+    })
+
+    characterSection:input({
+        name = "user",
+        flag = "misc.character.avatar_id",
+        default = config.avatar_id or "",
+        placeholder = "user id or username",
+        cb = function(v)
+            characterCosmeticsController.set_avatar_id(v)
         end,
     })
 end
