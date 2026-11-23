@@ -2573,7 +2573,7 @@ spamSection:slider({
     name = "spam cps",
     flag = "combat.spam_cps",
     min = 50,
-    max = 500,
+    max = 800,
     default = config.spam_cps or 120,
     suffix = " cps",
     cb = function(val)
